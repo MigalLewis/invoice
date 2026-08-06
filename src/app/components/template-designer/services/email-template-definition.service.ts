@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { collection, collectionData, doc, docData, Firestore, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from '@angular/fire/firestore';
-import { ref, Storage, uploadBytes } from '@angular/fire/storage';
+import { getBlob, ref, Storage, uploadBytes } from '@angular/fire/storage';
 import { map, Observable } from 'rxjs';
 import { EmailTemplateDefinition, EmailTemplateScenario, EmailTemplateType } from '../../../models/email-template-designer.model';
 import { EmailTemplateBuilderService } from './email-template-builder.service';
@@ -97,6 +97,38 @@ export class EmailTemplateDefinitionService {
     return id;
   }
 
+  async createReadyMade(companyId: string, template: EmailTemplateDefinition, freemarkerHtml: string): Promise<string> {
+    const id = crypto.randomUUID();
+    const freemarkerStoragePath = `companies/${companyId}/email-design-templates/${id}.ftl`;
+    const variables = extractDesignerTemplateVariables(freemarkerHtml);
+    await uploadBytes(ref(this.storage, freemarkerStoragePath), new Blob([freemarkerHtml], { type: 'text/x-freemarker' }), {
+      contentType: 'text/x-freemarker',
+      customMetadata: {
+        templateType: template.type,
+        sourceKind: 'ready-made',
+        ...(template.starterTemplateId ? { starterTemplateId: template.starterTemplateId } : {}),
+        ...(template.theme ? { theme: JSON.stringify(template.theme) } : {})
+      }
+    });
+    await setDoc(doc(this.db, `${this.collectionPath(companyId)}/${id}`), {
+      ...template,
+      id,
+      companyId,
+      sourceKind: 'ready-made',
+      freemarkerStoragePath,
+      variables,
+      archived: false,
+      updatedAt: serverTimestamp(),
+      createdAt: serverTimestamp()
+    });
+    return id;
+  }
+
+  async getSource(template: Pick<EmailTemplateDefinition, 'freemarkerStoragePath'>): Promise<string> {
+    if (!template.freemarkerStoragePath) throw new Error('Email template source is unavailable.');
+    return (await getBlob(ref(this.storage, template.freemarkerStoragePath))).text();
+  }
+
   private collectionPath(companyId: string): string {
     return `companies/${companyId}/emailDesignTemplates`;
   }
@@ -107,7 +139,7 @@ export function toFreemarkerTemplate(text: string): string {
 }
 
 export function extractDesignerTemplateVariables(text: string): string[] {
-  return Array.from(new Set([...text.matchAll(/\$\{\s*([a-zA-Z0-9_.]+)\s*}/g)].map(match => match[1])));
+  return Array.from(new Set([...text.matchAll(/\$\{\s*([a-zA-Z0-9_.]+)(?:\?[^}]*)?\s*}/g)].map(match => match[1])));
 }
 
 export function renderDesignedEmailPreview(text: string, variables: Record<string, unknown>): { html: string; unresolved: string[] } {

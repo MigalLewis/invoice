@@ -2,7 +2,7 @@ import { addDefaultScenario, extractDesignerTemplateVariables, removeDefaultScen
 
 describe('email template definition helpers', () => {
   it('extracts variables from stored FreeMarker templates', () => {
-    expect(extractDesignerTemplateVariables('<p>${client.name}</p><p>${invoice.total}</p><p>${client.name}</p>')).toEqual(['client.name', 'invoice.total']);
+    expect(extractDesignerTemplateVariables('<p>${client.name?html}</p><p>${invoice.total}</p><p>${client.name?html}</p>')).toEqual(['client.name', 'invoice.total']);
   });
 
   it('converts designer tokens to FreeMarker', () => {

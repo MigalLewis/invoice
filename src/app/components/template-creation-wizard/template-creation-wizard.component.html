@@ -3,7 +3,7 @@
     <div>
       <p class="eyebrow">New template</p>
       <h1 id="template-wizard-title">{{ step() === 'type' ? 'What kind of template is this?' : (step() === 'format' ? 'How would you like to create it?' : (creationType() === 'email' ? 'Select an email design' : (format() === 'freemarker-html' ? 'Select a ready-made design' : 'Upload a custom Word document'))) }}</h1>
-      <p>{{ step() === 'type' ? 'Choose whether the new template is for invoices, letters, or emails.' : (step() === 'format' ? 'Start with an existing design or upload your own Microsoft Word document.' : (creationType() === 'email' ? 'Choose an existing design to customise in the email editor.' : (format() === 'freemarker-html' ? 'Choose a professionally designed template, preview it, and customise its colours.' : 'Upload your custom Microsoft Word (.docx) layout for this ' + creationType() + '.'))) }}</p>
+      <p>{{ step() === 'type' ? 'Choose whether the new template is for invoices, letters, or emails.' : (step() === 'format' ? 'Start with an existing design or upload your own Microsoft Word document.' : (creationType() === 'email' ? 'Choose a design, customise its colours, and create the template directly.' : (format() === 'freemarker-html' ? 'Choose a professionally designed template, preview it, and customise its colours.' : 'Upload your custom Microsoft Word (.docx) layout for this ' + creationType() + '.'))) }}</p>
     </div>
     <button type="button" class="close" aria-label="Close template wizard" (click)="close()">×</button>
   </header>
@@ -78,7 +78,6 @@
   <div *ngIf="step() === 'configure' && creationType() === 'email'">
     <app-template-selection-layout>
       <div template-options class="email-starter-list" aria-label="Available email designs">
-        <button type="button" class="starter-card blank" (click)="startBlank()"><span class="plus">＋</span><strong>Blank design</strong><small>Start from scratch in the email editor.</small></button>
         <button type="button" class="starter-card" *ngFor="let starter of starters" [class.selected]="selectedEmailStarter()?.id === starter.id" (click)="selectEmailStarter(starter)">
           <span class="accent" [style.background]="starter.accent"></span><small>{{ starter.audience }}</small><strong>{{ starter.name }}</strong><span>{{ starter.description }}</span>
         </button>
@@ -87,9 +86,11 @@
           (colorsChange)="updateEmailPalette($event)"></app-template-colour-selector>
       </div>
       <section template-preview class="template-preview-panel" *ngIf="selectedEmailStarter() as selected">
-        <div class="preview-heading"><div><small>Preview</small><h2>{{ selected.name }}</h2><p>{{ selected.subject }}</p></div><button type="button" class="primary" (click)="useSelectedEmailStarter()">Use this design</button></div>
-        <iframe [srcdoc]="emailStarterPreview()" [title]="selected.name + ' email preview'" sandbox=""></iframe>
+        <div class="preview-heading"><div><small>Preview</small><h2>{{ selected.name }}</h2><p>{{ selected.subject }}</p></div><button type="button" class="primary" [disabled]="emailBusy()" (click)="useSelectedEmailStarter()">{{ emailBusy() ? 'Creating…' : 'Use this design' }}</button></div>
+        <iframe *ngIf="emailStarterPreview() as preview" class="email-design-preview-frame" [src]="preview" [title]="selected.name + ' email preview'" sandbox=""></iframe>
+        <div class="preview-loading" *ngIf="!emailStarterPreview() && !emailError()">Loading preview…</div>
       </section>
+      <p template-message class="template-error" role="alert" *ngIf="emailError()">{{ emailError() }}</p>
       <section template-preview class="template-preview-panel preview-placeholder" *ngIf="!selectedEmailStarter()"><strong>Select an email design</strong><span>Choose a design on the left to preview it here.</span></section>
     </app-template-selection-layout>
   </div>

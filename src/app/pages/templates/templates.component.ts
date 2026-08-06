@@ -17,7 +17,6 @@ import { EmptyStateComponent } from '../../components/empty-state/empty-state.co
 import { EmailTemplateDefinition, EmailTemplateScenario } from '../../models/email-template-designer.model';
 import { EMAIL_TEMPLATE_SCENARIOS, EmailTemplateDefinitionService } from '../../components/template-designer/services/email-template-definition.service';
 import { Dialog } from '@angular/cdk/dialog';
-import { EmailTemplateBuilderService } from '../../components/template-designer/services/email-template-builder.service';
 import { EmailTemplatePreviewDataService } from '../../components/template-designer/services/email-template-preview-data.service';
 import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser';
 import { TemplateCreationType, TemplateCreationWizardComponent } from '../../components/template-creation-wizard/template-creation-wizard.component';
@@ -91,7 +90,6 @@ export class TemplatesComponent implements OnDestroy {
   private emailTemplateDefinitions = inject(EmailTemplateDefinitionService);
   private fb = inject(FormBuilder);
   private dialog = inject(Dialog);
-  private emailBuilder = inject(EmailTemplateBuilderService);
   private previewData = inject(EmailTemplatePreviewDataService);
   private sanitizer = inject(DomSanitizer);
   private documentPreview = inject(DocumentTemplatePreviewService);
@@ -376,10 +374,16 @@ export class TemplatesComponent implements OnDestroy {
     }
   }
 
-  protected previewDesignedEmailTemplate(template: EmailTemplateDefinition): void {
+  protected async previewDesignedEmailTemplate(template: EmailTemplateDefinition): Promise<void> {
     this.previewEmailTemplate.set(template);
-    const html = this.emailBuilder.buildHtml(template as EmailTemplateDefinition, value => this.previewData.renderTokens(value));
-    this.previewEmailHtml.set(this.sanitizer.bypassSecurityTrustHtml(html));
+    try {
+      const source = await this.emailTemplateDefinitions.getSource(template);
+      const html = this.previewData.renderTokens(source.replace(/\$\{\s*([a-zA-Z0-9_.]+)(?:\?html)?\s*}/g, '{{$1}}'));
+      this.previewEmailHtml.set(this.sanitizer.bypassSecurityTrustHtml(html));
+    } catch (e: any) {
+      this.previewEmailTemplate.set(null);
+      this.error.set(e?.message ?? 'Unable to preview email template.');
+    }
   }
 
   protected closeEmailPreview(): void {

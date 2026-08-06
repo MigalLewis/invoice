@@ -6,13 +6,11 @@ import { RegisterWizardComponent } from './pages/register-wizard/register-wizard
 import { LandingComponent } from './pages/landing/landing.component';
 import { authGuard } from './utils/authGuard';
 import { companyGuard } from './utils/companyGuard';
-import { UploadTemplateComponent } from './pages/upload-template/upload-template.component';
 import { ClientDetailComponent } from './pages/client-detail/client-detail.component';
 import { MembershipPlanComponent } from './libraries/membership-plan/membership-plan.component';
 import { PlaceholderPageComponent } from './pages/placeholder/placeholder-page.component';
 import { TemplatesComponent } from './pages/templates/templates.component';
 import { FinanceComponent } from './pages/finance/finance.component';
-import { TemplateDesignerComponent } from './components/template-designer/template-designer.component';
 import { SettingsPageComponent } from './pages/settings/settings-page.component';
 
 const companyRoutes = [authGuard, companyGuard];
@@ -26,8 +24,6 @@ export const routes: Routes = [
   { path: 'clients/new', component: CreateClientComponent, canActivate: companyRoutes },
   { path: 'clients', component: ClientListComponent, canActivate: companyRoutes },
   { path: 'templates', component: TemplatesComponent, canActivate: companyRoutes },
-  { path: 'templates/designer/:templateId', component: TemplateDesignerComponent, canActivate: companyRoutes },
-  { path: 'templates/designer', component: TemplateDesignerComponent, canActivate: companyRoutes },
   { path: 'email-templates/designer/:templateId', redirectTo: 'templates/designer/:templateId' },
   { path: 'email-templates/designer', redirectTo: 'templates/designer' },
   { path: 'template', redirectTo: 'templates' },
