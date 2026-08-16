@@ -8,13 +8,13 @@ can therefore be rendered in an offline HTML-to-PDF pipeline.
 
 | File | Style |
 | --- | --- |
-| `01-azure-ledger.ftl` | Crisp blue corporate ledger |
-| `02-midnight-teal.ftl` | Dark, technology-focused masthead |
-| `03-sage-studio.ftl` | Warm editorial layout for creative businesses |
-| `04-coral-sidebar.ftl` | Bold sidebar with payment details |
-| `05-monochrome-grid.ftl` | Minimal black-and-white Swiss grid |
-| `06-violet-gradient.ftl` | Contemporary violet statement design |
-| `07-tricolour-sidebar.ftl` | Reference-inspired invoice with a custom three-colour sidebar |
+| `01-azure-ledger.ftl` | Classic Ledger — crisp corporate header and ledger layout |
+| `02-midnight-teal.ftl` | Executive Masthead — polished, high-contrast masthead |
+| `03-sage-studio.ftl` | Editorial Studio — refined editorial layout for creative businesses |
+| `04-coral-sidebar.ftl` | Payment Sidebar — bold side panel for contact and payment details |
+| `05-monochrome-grid.ftl` | Minimalist Grid — clean, structured professional grid |
+| `06-violet-gradient.ftl` | Contemporary Flow — layered gradient statement design |
+| `07-tricolour-sidebar.ftl` | Tricolour Sidebar — custom three-colour sidebar gradient |
 
 ## Data contract
 

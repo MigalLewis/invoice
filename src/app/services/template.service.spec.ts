@@ -66,6 +66,20 @@ describe('TemplateService', () => {
     expect(inspection.errors).toEqual([]);
   });
 
+  it('accepts structured client address variables', async () => {
+    const file = new File([
+      '<p>${client.address.line1?html}</p>',
+      '<p>${client.address.suburb?html}</p>',
+      '<p>${client.address.city?html}</p>',
+      '<p>${client.address.postalCode?html}</p>',
+      '<span>${invoice.number?html}</span><strong>${invoice.total?html}</strong>'
+    ], 'invoice.html', { type: 'text/html' });
+
+    const inspection = await service.inspectTemplateFile(file, 'freemarker-html', 'invoice');
+
+    expect(inspection.errors).toEqual([]);
+  });
+
 
   it('selects legacy templates that only have storagePath', () => {
     expect(selectDefaultTemplate([template('invoice-legacy', 'invoice', false)], 'invoice')?.id).toBe('invoice-legacy');

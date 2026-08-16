@@ -55,12 +55,12 @@ const STARTER_PALETTES: Record<string, StarterPaletteConfig> = {
 };
 
 export const FREEMARKER_INVOICE_TEMPLATES: FreemarkerStarterTemplate[] = [
-  starter('invoice', 'azure-ledger', 'Azure Ledger', 'A crisp blue header with a classic ledger layout.', '#3478d4'),
-  starter('invoice', 'midnight-teal', 'Midnight Teal', 'A dark, polished invoice with teal highlights.', '#1b9c96'),
-  starter('invoice', 'sage-studio', 'Sage Studio', 'A calm editorial design with soft green details.', '#779b78'),
-  starter('invoice', 'coral-sidebar', 'Coral Sidebar', 'A warm, modern layout with a bold side panel.', '#ed765f'),
-  starter('invoice', 'monochrome-grid', 'Monochrome Grid', 'A minimal black-and-white professional layout.', '#202020'),
-  starter('invoice', 'violet-gradient', 'Violet Gradient', 'A vibrant contemporary invoice with violet accents.', '#7357d9'),
+  starter('invoice', 'azure-ledger', 'Classic Ledger', 'A crisp corporate header with a classic ledger layout.', '#3478d4'),
+  starter('invoice', 'midnight-teal', 'Executive Masthead', 'A polished, high-contrast invoice with a prominent masthead.', '#1b9c96'),
+  starter('invoice', 'sage-studio', 'Editorial Studio', 'A calm editorial design with refined creative details.', '#779b78'),
+  starter('invoice', 'coral-sidebar', 'Payment Sidebar', 'A modern layout with a bold side panel for contact and payment details.', '#ed765f'),
+  starter('invoice', 'monochrome-grid', 'Minimalist Grid', 'A clean, structured professional grid with restrained styling.', '#202020'),
+  starter('invoice', 'violet-gradient', 'Contemporary Flow', 'A vibrant contemporary invoice with layered gradient accents.', '#7357d9'),
   starter('invoice', 'tricolour-sidebar', 'Tricolour Sidebar', 'A structured sidebar design with a custom three-colour gradient.', 'linear-gradient(#3a666d, #2a7a87, #71c2a7)')
 ];
 
