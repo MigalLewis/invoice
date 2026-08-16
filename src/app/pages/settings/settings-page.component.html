@@ -56,13 +56,7 @@
       <label>Website<input formControlName="website" placeholder="https://example.com"></label>
     </div></fieldset>
 
-    <fieldset><legend>Registered address</legend><div class="account-grid">
-      <label>Address line 1<input formControlName="line1" placeholder="Street and number"></label>
-      <label>Address line 2<input formControlName="line2" placeholder="Building, floor, or suite"></label>
-      <label>Suburb<input formControlName="suburb"></label><label>City<input formControlName="city"></label>
-      <label>Province<input formControlName="province"></label><label>Postal code<input formControlName="postalCode"></label>
-      <label>Country<input formControlName="country" placeholder="South Africa"></label>
-    </div></fieldset>
+    <fieldset><legend>Registered address</legend><app-address-fields [form]="accountForm" [showBuilding]="false"></app-address-fields></fieldset>
 
     <fieldset><legend>Banking details</legend><div class="account-grid">
       <label>Bank name<input formControlName="bankName"></label><label>Account holder<input formControlName="accountName"></label>

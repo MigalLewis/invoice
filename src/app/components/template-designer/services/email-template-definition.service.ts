@@ -3,7 +3,6 @@ import { collection, collectionData, doc, docData, Firestore, getDocs, query, se
 import { getBlob, ref, Storage, uploadBytes } from '@angular/fire/storage';
 import { map, Observable } from 'rxjs';
 import { EmailTemplateDefinition, EmailTemplateScenario, EmailTemplateType } from '../../../models/email-template-designer.model';
-import { EmailTemplateBuilderService } from './email-template-builder.service';
 
 export type DesignedEmailTemplateUseCase = 'invoice' | 'reminder' | 'letter' | 'general';
 export const EMAIL_TEMPLATE_SCENARIOS: { value: EmailTemplateScenario; label: string; type: EmailTemplateType }[] = [
@@ -27,7 +26,6 @@ const USE_CASE_TYPES: Record<DesignedEmailTemplateUseCase, EmailTemplateType[]> 
 export class EmailTemplateDefinitionService {
   private readonly db = inject(Firestore);
   private readonly storage = inject(Storage);
-  private readonly builder = inject(EmailTemplateBuilderService);
 
   list(companyId: string): Observable<EmailTemplateDefinition[]> {
     return collectionData(collection(this.db, this.collectionPath(companyId)), { idField: 'id' }) as Observable<EmailTemplateDefinition[]>;
@@ -49,7 +47,17 @@ export class EmailTemplateDefinitionService {
   }
 
   async duplicate(companyId: string, template: EmailTemplateDefinition): Promise<string> {
-    return this.save(companyId, { ...structuredClone(template), id: undefined, name: `${template.name} copy`, archived: false, defaultForScenarios: [], createdAt: undefined, updatedAt: undefined });
+    const source = await this.getSource(template);
+    return this.createReadyMade(companyId, {
+      ...structuredClone(template),
+      id: undefined,
+      companyId,
+      name: `${template.name} copy`,
+      archived: false,
+      defaultForScenarios: [],
+      createdAt: undefined,
+      updatedAt: undefined
+    }, source);
   }
 
   async rename(companyId: string, templateId: string, name: string): Promise<void> {
@@ -69,32 +77,6 @@ export class EmailTemplateDefinitionService {
     });
     batch.update(doc(this.db, `${this.collectionPath(companyId)}/${template.id}`), { defaultForScenarios: addDefaultScenario(template, scenario), scenario, archived: false, updatedAt: serverTimestamp() });
     await batch.commit();
-  }
-
-  async save(companyId: string, template: EmailTemplateDefinition): Promise<string> {
-    const id = template.id ?? crypto.randomUUID();
-    const freemarkerStoragePath = `companies/${companyId}/email-design-templates/${id}.ftl`;
-    const freemarkerHtml = toFreemarkerTemplate(this.builder.buildHtml(template));
-    const variables = extractDesignerTemplateVariables(freemarkerHtml);
-    await uploadBytes(ref(this.storage, freemarkerStoragePath), new Blob([freemarkerHtml], { type: 'text/x-freemarker' }), {
-      contentType: 'text/x-freemarker',
-      customMetadata: {
-        templateType: template.type,
-        sourceKind: template.sourceKind ?? 'custom',
-        ...(template.starterTemplateId ? { starterTemplateId: template.starterTemplateId } : {}),
-        ...(template.theme ? { theme: JSON.stringify(template.theme) } : {})
-      }
-    });
-    await setDoc(doc(this.db, `${this.collectionPath(companyId)}/${id}`), {
-      ...template,
-      id,
-      companyId,
-      freemarkerStoragePath,
-      variables,
-      updatedAt: serverTimestamp(),
-      createdAt: template.createdAt ?? serverTimestamp()
-    }, { merge: true });
-    return id;
   }
 
   async createReadyMade(companyId: string, template: EmailTemplateDefinition, freemarkerHtml: string): Promise<string> {

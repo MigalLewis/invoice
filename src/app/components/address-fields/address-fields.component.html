@@ -1,0 +1,10 @@
+<div class="address-grid" [formGroup]="form">
+  <label class="full" *ngIf="showBuilding">Building<input formControlName="building" placeholder="e.g. Building A, 1st Floor"></label>
+  <label class="full">Address line 1 <span *ngIf="required('line1')">*</span><input formControlName="line1" placeholder="Street and number"></label>
+  <label class="full">Address line 2<input formControlName="line2" placeholder="Unit, floor, or suite"></label>
+  <label *ngIf="showSuburb">Suburb<input formControlName="suburb"></label>
+  <label>City <span *ngIf="required('city')">*</span><input formControlName="city"></label>
+  <label>Province <span *ngIf="required('province')">*</span><input formControlName="province"></label>
+  <label>Postal code <span *ngIf="required('postalCode')">*</span><input formControlName="postalCode"></label>
+  <label>Country <span *ngIf="required('country')">*</span><input formControlName="country" placeholder="South Africa"></label>
+</div>

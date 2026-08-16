@@ -37,7 +37,7 @@ export class InvoiceDocxService {
     // compute per-line totals if missing
     const normalized = items.map(i => ({
       ...i,
-      amount: (parseFloat(i.rate) * parseFloat(i.hours)).toFixed(2),
+      amount: (Number(i.rate) * Number(i.hours)).toFixed(2),
     }));
     const subtotalNum = normalized.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
     const vatNum = includeVat ? +(subtotalNum * this.VAT_RATE).toFixed(2) : 0;
@@ -236,20 +236,4 @@ export class InvoiceDocxService {
     saveAs(blob, fileName);
   }
 
-  private escapeHtml(value: string): string {
-    return value.replace(/[&<>'"]/g, char => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      "'": '&#39;',
-      '"': '&quot;'
-    }[char] || char));
-  }
-
-  async downloadInBrowser(file: Blob, clientName: string, fileName: string): Promise<void> {
-    // Browser downloads cannot write directly to arbitrary local folders. The slash keeps
-    // the client name in the suggested filename for users to organize after download.
-    const suggestedFileName = `${clientName}/${fileName}`;
-    saveAs(file, suggestedFileName);
-  }
 }

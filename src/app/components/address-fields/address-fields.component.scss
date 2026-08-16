@@ -1,0 +1,8 @@
+:host { display:block; }
+.address-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 20px; }
+.full { grid-column:1/-1; }
+label { display:grid; gap:6px; color:var(--muted); font-size:13px; }
+label span { color:#b91c1c; }
+input { width:100%; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:#fff; color:var(--ink); font:inherit; }
+input:focus { border-color:var(--primary); outline:0; box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 15%,transparent); }
+@media(max-width:640px) { .address-grid { grid-template-columns:1fr; } .full { grid-column:auto; } }

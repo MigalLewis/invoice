@@ -1,0 +1,4 @@
+:host { display:block; }
+iframe { display:block; width:100%; height:min(68vh,760px); border:1px solid #dbe3ee; border-radius:8px; background:#fff; }
+.preview-loading { display:grid; place-items:center; min-height:180px; color:var(--muted); }
+@media(max-width:860px) { iframe { height:420px; } }

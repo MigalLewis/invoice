@@ -11,6 +11,7 @@ import { CompanyDocumentStorageSettings, DocumentStorageProvider } from '../../m
 import { CompanyEmailSettings, EmailProvider } from '../../models/email-integration.model';
 import { ActivityService } from '../../services/activity.service';
 import { CompanyBrandingService } from '../../services/company-branding.service';
+import { AddressFieldsComponent } from '../../components/address-fields/address-fields.component';
 import { CompanyContextService } from '../../services/company-context.service';
 import { CurrencyService } from '../../services/currency.service';
 import { DocumentStorageService } from '../../services/document-storage.service';
@@ -22,7 +23,7 @@ export type SettingsTab = 'account' | 'branding' | 'general' | 'storage' | 'emai
 @Component({
   selector: 'app-settings-page',
   standalone: true,
-  imports: [CommonModule, RouterLink, NavBarComponent, WorkspaceTopbarComponent, ReactiveFormsModule, ImageUploadComponent],
+  imports: [CommonModule, RouterLink, NavBarComponent, WorkspaceTopbarComponent, ReactiveFormsModule, ImageUploadComponent, AddressFieldsComponent],
   templateUrl: './settings-page.component.html',
   styleUrl: './settings-page.component.scss'
 })

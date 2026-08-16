@@ -6,11 +6,12 @@ import { CommonModule } from '@angular/common';
 import { matchPasswords } from '../../utils/validators';
 import { map, startWith } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { AddressFieldsComponent } from '../../components/address-fields/address-fields.component';
 
 @Component({
   selector: 'app-register-wizard',
   standalone: true,
-  imports: [ReactiveFormsModule, CommonModule],
+  imports: [ReactiveFormsModule, CommonModule, AddressFieldsComponent],
   templateUrl: './register-wizard.component.html',
   styleUrl: './register-wizard.component.scss'
 })

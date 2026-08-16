@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, inject, OnDestroy, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { UploadTemplateComponent } from '../../pages/upload-template/upload-template.component';
 import { CompanyTemplateFormat } from '../../models/invoice.model';
@@ -7,12 +7,12 @@ import { CURRENT_AUTH_USER } from '../../services/company-context.service';
 import { TemplateService } from '../../services/template.service';
 import { doc, docData, Firestore } from '@angular/fire/firestore';
 import { firstValueFrom, take } from 'rxjs';
-import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { createEmailStarters, EmailStarterTemplate, toReadyMadeDefinition } from './email-starter-catalog';
 import { TemplateColourSelectorComponent, TemplatePalette } from '../template-colour-selector/template-colour-selector.component';
 import { TemplateSelectionLayoutComponent } from '../template-selection-layout/template-selection-layout.component';
 import { DocumentTemplatePreviewService } from '../../services/document-template-preview.service';
 import { EmailTemplateDefinitionService } from '../template-designer/services/email-template-definition.service';
+import { TemplatePreviewFrameComponent } from '../template-preview-frame/template-preview-frame.component';
 
 export type TemplateCreationType = 'invoice' | 'letter' | 'email';
 export type TemplateCreationFormat = Extract<CompanyTemplateFormat, 'docx' | 'freemarker-html'>;
@@ -86,16 +86,15 @@ function letterPalette(): StarterPaletteConfig {
 @Component({
   selector: 'app-template-creation-wizard',
   standalone: true,
-  imports: [CommonModule, UploadTemplateComponent, TemplateColourSelectorComponent, TemplateSelectionLayoutComponent],
+  imports: [CommonModule, UploadTemplateComponent, TemplateColourSelectorComponent, TemplateSelectionLayoutComponent, TemplatePreviewFrameComponent],
   templateUrl: './template-creation-wizard.component.html',
   styleUrl: './template-creation-wizard.component.scss'
 })
-export class TemplateCreationWizardComponent implements OnDestroy {
+export class TemplateCreationWizardComponent {
   private readonly dialogRef = inject<DialogRef<string | null>>(DialogRef);
   private readonly authUser$ = inject(CURRENT_AUTH_USER);
   private readonly db = inject(Firestore);
   private readonly templateService = inject(TemplateService);
-  private readonly sanitizer = inject(DomSanitizer);
   private readonly documentPreview = inject(DocumentTemplatePreviewService);
   private readonly emailTemplateDefinitions = inject(EmailTemplateDefinitionService);
   private readonly dialogData = inject<TemplateCreationWizardData>(DIALOG_DATA, { optional: true });
@@ -107,12 +106,12 @@ export class TemplateCreationWizardComponent implements OnDestroy {
   readonly starters = createEmailStarters();
   readonly freemarkerStarters = computed(() => this.creationType() === 'letter' ? FREEMARKER_LETTER_TEMPLATES : FREEMARKER_INVOICE_TEMPLATES);
   readonly selectedFreemarker = signal<FreemarkerStarterTemplate | null>(null);
-  readonly freemarkerPreview = signal<SafeResourceUrl | null>(null);
+  readonly freemarkerPreview = signal<string | null>(null);
   readonly freemarkerBusy = signal(false);
   readonly freemarkerError = signal<string | null>(null);
   readonly templateName = signal('');
   readonly selectedEmailStarter = signal<EmailStarterTemplate | null>(null);
-  readonly emailStarterPreview = signal<SafeResourceUrl | null>(null);
+  readonly emailStarterPreview = signal<string | null>(null);
   readonly emailBusy = signal(false);
   readonly emailError = signal<string | null>(null);
   readonly emailPalettes = signal<Record<string, TemplatePalette>>(Object.fromEntries(
@@ -121,8 +120,6 @@ export class TemplateCreationWizardComponent implements OnDestroy {
   readonly starterPalettes = signal<Record<string, TemplatePalette>>(Object.fromEntries(
     Object.entries(STARTER_PALETTES).map(([id, config]) => [id, [...config.defaults] as TemplatePalette])
   ));
-  private previewObjectUrl: string | null = null;
-  private emailPreviewObjectUrl: string | null = null;
 
   selectType(type: TemplateCreationType): void {
     this.creationType.set(type);
@@ -165,8 +162,7 @@ export class TemplateCreationWizardComponent implements OnDestroy {
         (_match, index) => this.paletteFor(starter)[Number(index) - 1] ?? '#2a7a87'
       );
       const preview = this.documentPreview.buildHtml(themedSource);
-      this.previewObjectUrl = URL.createObjectURL(new Blob([preview], { type: 'text/html' }));
-      this.freemarkerPreview.set(this.sanitizer.bypassSecurityTrustResourceUrl(this.previewObjectUrl));
+      this.freemarkerPreview.set(preview);
     } catch {
       this.freemarkerError.set('The template preview could not be loaded. Please try another template.');
     }
@@ -191,8 +187,7 @@ export class TemplateCreationWizardComponent implements OnDestroy {
         throw new Error('The email template source is invalid.');
       }
       const preview = this.documentPreview.buildHtml(source);
-      this.emailPreviewObjectUrl = URL.createObjectURL(new Blob([preview], { type: 'text/html' }));
-      this.emailStarterPreview.set(this.sanitizer.bypassSecurityTrustResourceUrl(this.emailPreviewObjectUrl));
+      this.emailStarterPreview.set(preview);
     } catch {
       this.emailStarterPreview.set(null);
       this.emailError.set('The email design preview could not be loaded.');
@@ -268,11 +263,6 @@ export class TemplateCreationWizardComponent implements OnDestroy {
     }
   }
 
-  ngOnDestroy(): void {
-    this.releasePreview();
-    this.releaseEmailPreview();
-  }
-
   private async fetchStarter(starter: FreemarkerStarterTemplate): Promise<string> {
     const response = await fetch(starter.path);
     if (!response.ok) throw new Error(`Unable to load ${starter.name}.`);
@@ -297,14 +287,10 @@ export class TemplateCreationWizardComponent implements OnDestroy {
   }
 
   private releasePreview(): void {
-    if (this.previewObjectUrl) URL.revokeObjectURL(this.previewObjectUrl);
-    this.previewObjectUrl = null;
     this.freemarkerPreview.set(null);
   }
 
   private releaseEmailPreview(): void {
-    if (this.emailPreviewObjectUrl) URL.revokeObjectURL(this.emailPreviewObjectUrl);
-    this.emailPreviewObjectUrl = null;
     this.emailStarterPreview.set(null);
   }
 

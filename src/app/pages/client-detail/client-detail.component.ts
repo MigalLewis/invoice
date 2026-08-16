@@ -29,6 +29,7 @@ import { StatusBadgeComponent } from '../../components/status-badge/status-badge
 import { EmptyStateComponent } from '../../components/empty-state/empty-state.component';
 import { LoadingStateComponent } from '../../components/loading-state/loading-state.component';
 import { WorkspaceShellComponent } from '../../components/workspace-shell/workspace-shell.component';
+import { clientFormattedAddress, clientInitials, clientStatusClass, clientTypeLabel } from './client-summary.presenter';
 
 @Component({
   selector: 'app-client-detail',
@@ -151,16 +152,11 @@ export class ClientDetailComponent {
   }
 
   get initials(): string {
-    const name = this.client()?.displayName || 'Client';
-    return name.split(' ').slice(0, 2).map((part: string) => part[0]).join('').toUpperCase();
+    return clientInitials(this.client());
   }
 
   get formattedAddress(): string {
-    const address = this.client()?.address;
-    if (!address) return 'Address not provided';
-    return [address.line1, address.line2, address.suburb, address.city, address.province, address.postalCode, address.country]
-      .filter(Boolean)
-      .join(', ');
+    return clientFormattedAddress(this.client());
   }
 
   get primaryContact(): string {
@@ -191,9 +187,7 @@ export class ClientDetailComponent {
   }
 
   get clientTypeLabel(): string {
-    const client = this.client();
-    const type = client?.clientType || (client?.title || client?.firstName || client?.lastName ? 'client' : 'company');
-    return type.charAt(0).toUpperCase() + type.slice(1);
+    return clientTypeLabel(this.client());
   }
 
   get clientStatus(): string {
@@ -201,8 +195,7 @@ export class ClientDetailComponent {
   }
 
   get clientStatusClass(): string {
-    const normalized = this.clientStatus.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
-    return normalized === 'not-provided' ? 'status-draft' : `status-${normalized}`;
+    return clientStatusClass(this.clientStatus);
   }
 
 
