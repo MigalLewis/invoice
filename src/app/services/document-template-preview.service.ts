@@ -19,6 +19,7 @@ export class DocumentTemplatePreviewService {
     'invoice.number': 'PAC-2026-1042', 'invoice.date': '6 August 2026', 'invoice.dueDate': '5 September 2026',
     'invoice.subtotal': 'R 12,000.00', 'invoice.vatPercentage': '15', 'invoice.vat': 'R 1,800.00', 'invoice.total': 'R 13,800.00',
     'invoice.notes': 'Thank you for choosing Pacifish.',
+    'message.body': 'Please find the latest update from the Pacifish team. Review the details below and contact us if you have any questions.',
     'item.description': 'Nexus platform consulting and support', 'item.hours': '20', 'item.rate': 'R 600.00', 'item.amount': 'R 12,000.00',
     'payment.reference': 'PAC-2026-1042', 'payment.bankName': 'Nexus Bank', 'payment.accountHolder': 'Pacifish Consulting (Pty) Ltd',
     'payment.accountType': 'Business Cheque', 'payment.accountNumber': '1234567890', 'payment.branchCode': '250655', 'signature.name': 'Mia Daniels'

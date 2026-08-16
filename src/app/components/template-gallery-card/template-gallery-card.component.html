@@ -1,0 +1,23 @@
+<article class="template-card">
+  <div class="template-preview" [class.preview-letter]="kind === 'letter'" [class.email-card-preview]="kind === 'email'">
+    <div class="email-paper" *ngIf="kind === 'email'" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    <div class="preview-paper" *ngIf="kind !== 'email'" [class.invoice-paper]="kind === 'invoice'">
+      <div class="paper-logo"></div><div class="paper-line short"></div><div class="paper-line"></div><div class="paper-line"></div>
+      <div class="paper-table" *ngIf="kind === 'invoice'"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      <div class="paper-signature" *ngIf="kind === 'letter'"></div>
+    </div>
+    <span class="template-badge type-badge">{{ kind }}</span>
+    <span class="template-badge category-badge">{{ badge }}</span>
+  </div>
+  <div class="template-content">
+    <div class="title-line"><h2>{{ name }}</h2></div>
+    <small *ngIf="detail">{{ detail }}</small>
+    <div class="default-list" *ngIf="defaults.length">Default for: <span *ngFor="let scenario of defaults">{{ scenario }}</span></div>
+  </div>
+  <div class="template-actions">
+    <button class="square-button" type="button" aria-label="Rename template" title="Rename" (click)="renamed.emit()"><span class="app-icon" aria-hidden="true">✎</span></button>
+    <button class="square-button" type="button" aria-label="Duplicate template" title="Duplicate" (click)="duplicated.emit()"><span class="app-icon" aria-hidden="true">⧉</span></button>
+    <button class="square-button" type="button" [attr.aria-label]="viewAction === 'download' ? 'Download Word document' : 'View template'" [title]="viewAction === 'download' ? 'Download' : 'View'" (click)="viewed.emit()"><span class="app-icon" aria-hidden="true">{{ viewAction === 'download' ? '⬇️' : '👁' }}</span></button>
+    <button class="square-button" type="button" [attr.aria-label]="archived ? 'Restore template' : 'Archive template'" [title]="archived ? 'Restore' : 'Archive'" (click)="archiveChanged.emit()"><span class="app-icon" aria-hidden="true">{{ archived ? '↩' : '🗑️' }}</span></button>
+  </div>
+</article>

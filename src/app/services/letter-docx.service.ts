@@ -3,7 +3,6 @@ import { inject, Injectable } from '@angular/core';
 import { Firestore, doc, docData, updateDoc } from '@angular/fire/firestore';
 import { getDownloadURL, ref, Storage, uploadBytes } from '@angular/fire/storage';
 import Docxtemplater from 'docxtemplater';
-import { saveAs } from 'file-saver';
 import PizZip from 'pizzip';
 import { catchError, from, map, Observable, switchMap, take, throwError } from 'rxjs';
 import { Company } from '../models/invoice.model';
@@ -14,6 +13,7 @@ import { TemplateRendererService } from './template-renderer.service';
 import { DocumentStorageService } from './document-storage.service';
 import { PdfGenerationResult, PdfGenerationService } from './pdf-generation.service';
 import { requiredVariablesForTemplate, variableLabel } from '../models/template-variable-registry.model';
+import { isoDate } from '../utils/date.utils';
 
 @Injectable({ providedIn: 'root' })
 export class LetterDocxService {
@@ -171,7 +171,7 @@ export class LetterDocxService {
     const a = company.address || {};
     return {
       letter_title: input.title,
-      letter_date: new Date().toISOString().slice(0, 10),
+      letter_date: isoDate(),
       letter_message: input.message,
       client_name: c.displayName || '',
       client_street: `${ca.line1 || ''} ${ca.line2 || ''}`.trim(),
@@ -194,17 +194,6 @@ export class LetterDocxService {
       signature_url: input.signature?.url || company.signature?.imageUrl || company.signature?.url || company.signatureUrl || '',
       company_logo_url: company.logoUrl || ''
     };
-  }
-
-  private downloadInBrowser(file: Blob, clientName: string, fileName: string): void {
-    // Browser downloads cannot write directly to arbitrary local folders. The slash keeps
-    // the client name in the suggested filename for users to organize after download.
-    saveAs(file, `${clientName}/${fileName}`);
-  }
-
-  private assertDocx(file: File) {
-    if (!file) throw new Error('Letter template file is required.');
-    if (!file.name.toLowerCase().endsWith('.docx')) throw new Error('Letter template must be a .docx file.');
   }
 
   private slug(value: string): string {

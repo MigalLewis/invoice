@@ -53,34 +53,7 @@
 
             <!-- STEP 2 -->
             <form *ngIf="step()===2" [formGroup]="step2" (ngSubmit)="next()" novalidate>
-                <label>Address Line 1 <span>*</span></label>
-                <input class="control" type="text" formControlName="line1"
-                    placeholder="6 Sturdee Avenue, 1st Floor, Building 6">
-
-                <label class="mt">Address Line 2</label>
-                <input class="control" type="text" formControlName="line2" placeholder="(optional)">
-
-                <div class="row">
-                    <div class="col">
-                        <label class="mt">City <span>*</span></label>
-                        <input class="control" type="text" formControlName="city" placeholder="Rosebank">
-                    </div>
-                    <div class="col">
-                        <label class="mt">Province <span>*</span></label>
-                        <input class="control" type="text" formControlName="province" placeholder="Gauteng">
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col">
-                        <label class="mt">Postal Code <span>*</span></label>
-                        <input class="control" type="text" formControlName="postalCode" placeholder="2196">
-                    </div>
-                    <div class="col">
-                        <label class="mt">Country <span>*</span></label>
-                        <input class="control" type="text" formControlName="country" placeholder="South Africa">
-                    </div>
-                </div>
+                <app-address-fields [form]="step2" [showBuilding]="false" [showSuburb]="false" [requiredFields]="['line1', 'city', 'country']"></app-address-fields>
 
                 <div class="actions">
                     <button class="ghost" type="button" (click)="back()">Back</button>

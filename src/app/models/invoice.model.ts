@@ -1,10 +1,12 @@
 import { Address } from './address.model';
 
 export interface InvoiceItem {
-  description: string;     
-  rate: string;        
-  hours: string; 
-  amount?: string;      
+  description: string;
+  rate: number | string;
+  hours: number | string;
+  amount?: number | string;
+  total?: number | string;
+  [key: string]: unknown;
 }
 
 export interface InvoiceData {

@@ -51,3 +51,4 @@
 .template-name-field { display:grid; gap:6px; margin:0 0 16px; color:var(--muted); font-size:13px; font-weight:700; }
 .template-name-field input { width:100%; padding:11px 13px; border:1px solid var(--border); border-radius:10px; background:#fff; color:var(--ink); font:inherit; }
 .template-name-field input:focus { border-color:var(--primary); outline:0; box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 18%,transparent); }
+.email-design-preview-frame { min-height:520px; overflow:auto; border:1px solid var(--border); border-radius:10px; background:#f4f6f8; }

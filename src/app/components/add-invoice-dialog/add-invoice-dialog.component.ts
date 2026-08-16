@@ -15,6 +15,8 @@ import { Timestamp } from 'firebase/firestore';
 import { CompanyTemplate } from '../../models/invoice.model';
 import { Router } from '@angular/router';
 import { normalizeTemplateFormat } from '../../services/template-renderer.service';
+import { calculateInvoiceTotals, clientTemplateFields, normalizeInvoiceItems } from './invoice-generation.mapper';
+import { daysFromToday, isoDate } from '../../utils/date.utils';
 
 
 export interface InvoicePaymentAdjustment {
@@ -248,49 +250,21 @@ export class AddInvoiceDialogComponent {
     this.error.set(null);
 
     const formValue = this.form.getRawValue();
-    const items = formValue.items.map((it: { description: string; rate: number; hours: number }) => {
-      const rate = Number(it.rate) || 0;
-      const hours = Number(it.hours) || 0;
-      const amount = +(rate * hours).toFixed(2);
-
-      return {
-        description: it.description,
-        rate,
-        hours,
-        amount,
-        total: amount
-      };
-    });
+    const items = normalizeInvoiceItems(formValue.items);
 
     const includeVat = Boolean(formValue.includeVat);
     const servicesProvided = formValue.servicesProvided || '';
-    const subtotal = +items.reduce((sum: number, i: { amount: number }) => sum + i.amount, 0).toFixed(2);
-    const vatAmount = includeVat ? +(subtotal * 0.15).toFixed(2) : 0;
-    const total = +(subtotal + vatAmount).toFixed(2);
+    const { subtotal, vatAmount, total } = calculateInvoiceTotals(items, includeVat);
     const amountPaid = this.viewOnly ? this.resolveAmountPaid(formValue.status, total, formValue.amountPaid) : 0;
     const status = this.viewOnly ? this.resolveInvoiceStatus(formValue.status, total, amountPaid, formValue.dueDate) : 'sent';
 
     const invoiceData = {
       invoice_number: formValue.invoiceNumber,
       invoice_date: this.viewOnly && this.previousInvoice?.date
-        ? this.toIsoDate(this.previousInvoice.date)
-        : new Date().toISOString().slice(0, 10),
+        ? isoDate(this.previousInvoice.date)
+        : isoDate(),
       dueDate: formValue.dueDate || '',
-      client_name: this.client?.clientType === 'company'
-        ? (this.client?.companyName || this.client?.displayName || 'Unknown Client')
-        : ([this.client?.firstName, this.client?.lastName].filter(Boolean).join(' ') || this.client?.displayName || 'Unknown Client'),
-      client_title: this.client?.title || '',
-      client_building: this.client?.address?.building || '',
-      client_line1: this.client?.address?.line1 || '',
-      client_line2: this.client?.address?.line2 || '',
-      client_street: this.client?.address?.line1 || '',
-      client_suburb: this.client?.address?.suburb || '',
-      client_city: this.client?.address?.city || '',
-      client_province: this.client?.address?.province || '',
-      client_postal_code: this.client?.address?.postalCode || '',
-      client_country: this.client?.address?.country || '',
-      client_contact_no: this.client?.phone || '',
-      client_email: this.client?.email || '',
+      ...clientTemplateFields(this.client),
       services_rendered: servicesProvided,
       notes: formValue.notes || '',
       reference: formValue.invoiceNumber,
@@ -360,18 +334,6 @@ export class AddInvoiceDialogComponent {
     ).subscribe();
   }
 
-  private toIsoDate(value: any): string {
-    if (typeof value === 'string') {
-      return value.slice(0, 10);
-    }
-
-    if (typeof value?.toDate === 'function') {
-      return value.toDate().toISOString().slice(0, 10);
-    }
-
-    return new Date(value).toISOString().slice(0, 10);
-  }
-
   private getCopiedServicesProvided(): string {
     return this.previousInvoice?.servicesProvided
       || this.previousInvoice?.services_rendered
@@ -409,16 +371,14 @@ export class AddInvoiceDialogComponent {
 
   private getCopiedDueDate(): string {
     if ((this.viewOnly || this.trackingOnly) && this.previousInvoice?.dueDate) {
-      return this.toIsoDate(this.previousInvoice.dueDate);
+      return isoDate(this.previousInvoice.dueDate);
     }
 
     return this.getDefaultDueDate();
   }
 
   private getDefaultDueDate(): string {
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 5);
-    return dueDate.toISOString().slice(0, 10);
+    return daysFromToday(5);
   }
 
   private getInitialAmountPaid(): number {

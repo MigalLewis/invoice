@@ -40,46 +40,7 @@
           </small>
         </div>
 
-        <!-- Address Fields -->
-        <div class="form-group full">
-          <label>Building</label>
-          <input type="text" formControlName="building" placeholder="e.g. Building A, 1st Floor">
-        </div>
-
-        <div class="form-group full">
-          <label>Street Address </label>
-          <input type="text" formControlName="line1" placeholder="123 Main Street,1st floor Building A">
-        </div>
-
-        <div class="form-group full">
-          <label>Street Address (line 2) </label>
-          <input type="text" formControlName="line2" placeholder="(optional) cnr 2cnd Ave">
-        </div>
-
-        <div class="form-group full">
-          <label>Suburb</label>
-          <input type="text" formControlName="suburb" placeholder="Sandhurst">
-        </div>
-
-        <div class="form-group half">
-          <label>City / Town</label>
-          <input type="text" formControlName="city" placeholder="Sandton">
-        </div>
-
-        <div class="form-group half">
-          <label>Province</label>
-          <input type="text" formControlName="province" placeholder="Gauteng">
-        </div>
-
-        <div class="form-group half">
-          <label>Postal Code</label>
-          <input type="text" formControlName="postalCode" placeholder="2196">
-        </div>
-
-        <div class="form-group half">
-          <label>Country</label>
-          <input type="text" formControlName="country" placeholder="South Africa">
-        </div>
+        <app-address-fields class="full" [form]="form"></app-address-fields>
 
         <!-- Contact -->
         <div class="form-group half">

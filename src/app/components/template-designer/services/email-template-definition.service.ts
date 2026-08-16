@@ -1,9 +1,8 @@
 import { inject, Injectable } from '@angular/core';
 import { collection, collectionData, doc, docData, Firestore, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from '@angular/fire/firestore';
-import { ref, Storage, uploadBytes } from '@angular/fire/storage';
+import { getBlob, ref, Storage, uploadBytes } from '@angular/fire/storage';
 import { map, Observable } from 'rxjs';
 import { EmailTemplateDefinition, EmailTemplateScenario, EmailTemplateType } from '../../../models/email-template-designer.model';
-import { EmailTemplateBuilderService } from './email-template-builder.service';
 
 export type DesignedEmailTemplateUseCase = 'invoice' | 'reminder' | 'letter' | 'general';
 export const EMAIL_TEMPLATE_SCENARIOS: { value: EmailTemplateScenario; label: string; type: EmailTemplateType }[] = [
@@ -27,7 +26,6 @@ const USE_CASE_TYPES: Record<DesignedEmailTemplateUseCase, EmailTemplateType[]> 
 export class EmailTemplateDefinitionService {
   private readonly db = inject(Firestore);
   private readonly storage = inject(Storage);
-  private readonly builder = inject(EmailTemplateBuilderService);
 
   list(companyId: string): Observable<EmailTemplateDefinition[]> {
     return collectionData(collection(this.db, this.collectionPath(companyId)), { idField: 'id' }) as Observable<EmailTemplateDefinition[]>;
@@ -49,7 +47,17 @@ export class EmailTemplateDefinitionService {
   }
 
   async duplicate(companyId: string, template: EmailTemplateDefinition): Promise<string> {
-    return this.save(companyId, { ...structuredClone(template), id: undefined, name: `${template.name} copy`, archived: false, defaultForScenarios: [], createdAt: undefined, updatedAt: undefined });
+    const source = await this.getSource(template);
+    return this.createReadyMade(companyId, {
+      ...structuredClone(template),
+      id: undefined,
+      companyId,
+      name: `${template.name} copy`,
+      archived: false,
+      defaultForScenarios: [],
+      createdAt: undefined,
+      updatedAt: undefined
+    }, source);
   }
 
   async rename(companyId: string, templateId: string, name: string): Promise<void> {
@@ -71,16 +79,15 @@ export class EmailTemplateDefinitionService {
     await batch.commit();
   }
 
-  async save(companyId: string, template: EmailTemplateDefinition): Promise<string> {
-    const id = template.id ?? crypto.randomUUID();
+  async createReadyMade(companyId: string, template: EmailTemplateDefinition, freemarkerHtml: string): Promise<string> {
+    const id = crypto.randomUUID();
     const freemarkerStoragePath = `companies/${companyId}/email-design-templates/${id}.ftl`;
-    const freemarkerHtml = toFreemarkerTemplate(this.builder.buildHtml(template));
     const variables = extractDesignerTemplateVariables(freemarkerHtml);
     await uploadBytes(ref(this.storage, freemarkerStoragePath), new Blob([freemarkerHtml], { type: 'text/x-freemarker' }), {
       contentType: 'text/x-freemarker',
       customMetadata: {
         templateType: template.type,
-        sourceKind: template.sourceKind ?? 'custom',
+        sourceKind: 'ready-made',
         ...(template.starterTemplateId ? { starterTemplateId: template.starterTemplateId } : {}),
         ...(template.theme ? { theme: JSON.stringify(template.theme) } : {})
       }
@@ -89,12 +96,19 @@ export class EmailTemplateDefinitionService {
       ...template,
       id,
       companyId,
+      sourceKind: 'ready-made',
       freemarkerStoragePath,
       variables,
+      archived: false,
       updatedAt: serverTimestamp(),
-      createdAt: template.createdAt ?? serverTimestamp()
-    }, { merge: true });
+      createdAt: serverTimestamp()
+    });
     return id;
+  }
+
+  async getSource(template: Pick<EmailTemplateDefinition, 'freemarkerStoragePath'>): Promise<string> {
+    if (!template.freemarkerStoragePath) throw new Error('Email template source is unavailable.');
+    return (await getBlob(ref(this.storage, template.freemarkerStoragePath))).text();
   }
 
   private collectionPath(companyId: string): string {
@@ -107,7 +121,7 @@ export function toFreemarkerTemplate(text: string): string {
 }
 
 export function extractDesignerTemplateVariables(text: string): string[] {
-  return Array.from(new Set([...text.matchAll(/\$\{\s*([a-zA-Z0-9_.]+)\s*}/g)].map(match => match[1])));
+  return Array.from(new Set([...text.matchAll(/\$\{\s*([a-zA-Z0-9_.]+)(?:\?[^}]*)?\s*}/g)].map(match => match[1])));
 }
 
 export function renderDesignedEmailPreview(text: string, variables: Record<string, unknown>): { html: string; unresolved: string[] } {

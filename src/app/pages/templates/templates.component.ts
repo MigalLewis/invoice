@@ -1,7 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, inject, OnDestroy, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { collection, collectionData, Firestore } from '@angular/fire/firestore';
 import { NavBarComponent } from '../../components/nav-bar/nav-bar.component';
 import { WorkspaceTopbarComponent } from '../../components/workspace-topbar/workspace-topbar.component';
@@ -10,20 +9,18 @@ import { normalizeTemplateFormat } from '../../services/template-renderer.servic
 import { TemplateService } from '../../services/template.service';
 import { LetterDocxService } from '../../services/letter-docx.service';
 import { CompanyContextService } from '../../services/company-context.service';
-import { CompanyEmailTemplate, EMAIL_TEMPLATE_VARIABLE_LABELS, EMAIL_TEMPLATE_VARIABLES } from '../../models/company-email-template.model';
-import { EmailTemplateService, validateEmailTemplate } from '../../services/email-template.service';
 import { WorkspaceShellComponent } from '../../components/workspace-shell/workspace-shell.component';
 import { EmptyStateComponent } from '../../components/empty-state/empty-state.component';
 import { EmailTemplateDefinition, EmailTemplateScenario } from '../../models/email-template-designer.model';
 import { EMAIL_TEMPLATE_SCENARIOS, EmailTemplateDefinitionService } from '../../components/template-designer/services/email-template-definition.service';
 import { Dialog } from '@angular/cdk/dialog';
-import { EmailTemplateBuilderService } from '../../components/template-designer/services/email-template-builder.service';
 import { EmailTemplatePreviewDataService } from '../../components/template-designer/services/email-template-preview-data.service';
-import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser';
 import { TemplateCreationType, TemplateCreationWizardComponent } from '../../components/template-creation-wizard/template-creation-wizard.component';
 import { DocumentTemplatePreviewService } from '../../services/document-template-preview.service';
 import { NotificationService } from '../../services/notification.service';
 import { RenameTemplateDialogComponent } from '../../components/rename-template-dialog/rename-template-dialog.component';
+import { TemplatePreviewFrameComponent } from '../../components/template-preview-frame/template-preview-frame.component';
+import { TemplateGalleryCardComponent } from '../../components/template-gallery-card/template-gallery-card.component';
 
 type TemplateType = 'invoice' | 'letter';
 type TemplateTab = 'overview' | 'invoices' | 'letters' | 'emails';
@@ -76,24 +73,20 @@ export function filterTemplates(templates: TemplateCard[], filter: TemplateFilte
 @Component({
   selector: 'app-templates',
   standalone: true,
-  imports: [CommonModule, RouterLink, ReactiveFormsModule, NavBarComponent, WorkspaceTopbarComponent, WorkspaceShellComponent, EmptyStateComponent],
+  imports: [CommonModule, RouterLink, NavBarComponent, WorkspaceTopbarComponent, WorkspaceShellComponent, EmptyStateComponent, TemplatePreviewFrameComponent, TemplateGalleryCardComponent],
   templateUrl: './templates.component.html',
   styleUrl: './templates.component.scss'
 })
-export class TemplatesComponent implements OnDestroy {
+export class TemplatesComponent {
   private db = inject(Firestore);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private templateService = inject(TemplateService);
   private letterDocx = inject(LetterDocxService);
   private companyContext = inject(CompanyContextService);
-  private emailTemplateService = inject(EmailTemplateService);
   private emailTemplateDefinitions = inject(EmailTemplateDefinitionService);
-  private fb = inject(FormBuilder);
   private dialog = inject(Dialog);
-  private emailBuilder = inject(EmailTemplateBuilderService);
   private previewData = inject(EmailTemplatePreviewDataService);
-  private sanitizer = inject(DomSanitizer);
   private documentPreview = inject(DocumentTemplatePreviewService);
   private notifications = inject(NotificationService);
 
@@ -102,23 +95,12 @@ export class TemplatesComponent implements OnDestroy {
   protected readonly error = signal<string | null>(null);
   protected readonly templates = signal<TemplateCard[]>([]);
   protected readonly statusFilter = signal<TemplateStatusFilter>('active');
-  protected readonly emailTemplates = signal<CompanyEmailTemplate[]>([]);
   protected readonly designedEmailTemplates = signal<EmailTemplateDefinition[]>([]);
   protected readonly previewEmailTemplate = signal<EmailTemplateDefinition | null>(null);
-  protected readonly previewEmailHtml = signal<SafeHtml>('');
+  protected readonly previewEmailHtml = signal<string | null>(null);
   protected readonly previewDocumentTemplate = signal<GalleryCard | null>(null);
-  protected readonly previewDocumentUrl = signal<SafeResourceUrl | null>(null);
+  protected readonly previewDocumentHtml = signal<string | null>(null);
   protected readonly scenarios = EMAIL_TEMPLATE_SCENARIOS;
-  protected readonly selectedEmailTemplate = signal<CompanyEmailTemplate | null>(null);
-  protected readonly emailTemplateMessage = signal('');
-  protected readonly variables = EMAIL_TEMPLATE_VARIABLES;
-  protected readonly variableLabels = EMAIL_TEMPLATE_VARIABLE_LABELS;
-  private documentPreviewObjectUrl: string | null = null;
-
-  protected readonly emailTemplateForm = this.fb.nonNullable.group({
-    subject: ['', [Validators.required]],
-    body: ['', [Validators.required]]
-  });
 
   constructor() {
     const requestedTab = this.route.snapshot.queryParamMap.get('tab');
@@ -235,11 +217,6 @@ export class TemplatesComponent implements OnDestroy {
     else void this.previewDesignedDocumentTemplate(template);
   }
 
-  protected openGalleryMenu(template: GalleryCard): void {
-    if (template.kind === 'email') void this.openEmailMoreMenu(template.source);
-    else void this.openMoreMenu(template.source);
-  }
-
   protected async archiveGalleryTemplate(template: GalleryCard): Promise<void> {
     try {
       if (template.kind === 'email') {
@@ -255,32 +232,20 @@ export class TemplatesComponent implements OnDestroy {
 
   protected closeDocumentPreview(): void {
     this.previewDocumentTemplate.set(null);
-    this.releaseDocumentPreview();
+    this.previewDocumentHtml.set(null);
   }
 
   protected async previewDesignedDocumentTemplate(template: GalleryCard & { kind: 'invoice' | 'letter' }): Promise<void> {
     this.previewDocumentTemplate.set(template);
-    this.releaseDocumentPreview();
+    this.previewDocumentHtml.set(null);
     try {
       const source = await this.templateService.getTemplateSource(template.source.storagePath);
-      console.log('previewDesignedDocumentTemplate source', source);
       const previewHtml = this.documentPreview.buildHtml(source);
-      this.documentPreviewObjectUrl = URL.createObjectURL(new Blob([previewHtml], { type: 'text/html' }));
-      this.previewDocumentUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(this.documentPreviewObjectUrl));
+      this.previewDocumentHtml.set(previewHtml);
     } catch (e: any) {
       this.closeDocumentPreview();
       this.error.set(e?.message ?? 'Unable to preview template.');
     }
-  }
-
-  ngOnDestroy(): void {
-    this.releaseDocumentPreview();
-  }
-
-  private releaseDocumentPreview(): void {
-    if (this.documentPreviewObjectUrl) URL.revokeObjectURL(this.documentPreviewObjectUrl);
-    this.documentPreviewObjectUrl = null;
-    this.previewDocumentUrl.set(null);
   }
 
   protected async onLetterTemplatePicked(ev: Event): Promise<void> {
@@ -315,75 +280,21 @@ export class TemplatesComponent implements OnDestroy {
     }
   }
 
-  protected async openMoreMenu(template: TemplateCard): Promise<void> {
-    const action = window.prompt('Choose action: archive, default, duplicate, delete', template.archived ? 'archive' : 'default');
-    if (!action) return;
-    try {
-      const companyId = await this.companyContext.requireCompanyIdOnce();
-      switch (action.toLowerCase()) {
-        case 'archive':
-          await this.templateService.archiveTemplate(companyId, template.id, !template.archived);
-          break;
-        case 'default':
-        case 'set default':
-          await this.templateService.setDefaultTemplate(companyId, template.id, template.type);
-          break;
-        case 'duplicate':
-        case 'copy':
-          await this.templateService.duplicateTemplate(companyId, template);
-          break;
-        case 'delete':
-          if (await this.notifications.confirm(`Delete ${template.name}? This action cannot be undone.`, 'Delete template')) {
-            await this.templateService.deleteTemplate(companyId, template);
-            this.notifications.success(`${template.name} was deleted.`);
-          }
-          break;
-      }
-    } catch (e: any) {
-      this.error.set(e?.message ?? 'Unable to update template.');
-      this.notifications.error(e?.message ?? 'Unable to update template.', e);
-    }
-  }
-
-
-  protected selectEmailTemplate(template: CompanyEmailTemplate): void {
-    this.selectedEmailTemplate.set(template);
-    this.emailTemplateMessage.set('');
-    this.emailTemplateForm.setValue({ subject: template.subject, body: template.body ?? '' });
-  }
-
-  protected insertVariable(variable: string): void {
-    const body = this.emailTemplateForm.controls.body;
-    body.setValue(`${body.value} {{${variable}}}`.trim());
-    body.markAsDirty();
-  }
-
-  protected async saveEmailTemplate(): Promise<void> {
-    const template = this.selectedEmailTemplate();
-    if (!template) return;
-    const value = this.emailTemplateForm.getRawValue();
-    const errors = validateEmailTemplate(value.subject, value.body);
-    if (errors.length) {
-      this.emailTemplateMessage.set(errors.join(' '));
-      return;
-    }
-    try {
-      const companyId = await this.companyContext.requireCompanyIdOnce();
-      await this.emailTemplateService.save(companyId, { ...template, subject: value.subject, body: value.body });
-      this.emailTemplateMessage.set('Email template saved.');
-    } catch (e: any) {
-      this.emailTemplateMessage.set(e?.message ?? 'Unable to save email template.');
-    }
-  }
-
-  protected previewDesignedEmailTemplate(template: EmailTemplateDefinition): void {
+  protected async previewDesignedEmailTemplate(template: EmailTemplateDefinition): Promise<void> {
     this.previewEmailTemplate.set(template);
-    const html = this.emailBuilder.buildHtml(template as EmailTemplateDefinition, value => this.previewData.renderTokens(value));
-    this.previewEmailHtml.set(this.sanitizer.bypassSecurityTrustHtml(html));
+    try {
+      const source = await this.emailTemplateDefinitions.getSource(template);
+      const html = this.previewData.renderTokens(source.replace(/\$\{\s*([a-zA-Z0-9_.]+)(?:\?html)?\s*}/g, '{{$1}}'));
+      this.previewEmailHtml.set(html);
+    } catch (e: any) {
+      this.previewEmailTemplate.set(null);
+      this.error.set(e?.message ?? 'Unable to preview email template.');
+    }
   }
 
   protected closeEmailPreview(): void {
     this.previewEmailTemplate.set(null);
+    this.previewEmailHtml.set(null);
   }
 
   protected async duplicateDesignedEmailTemplate(template: EmailTemplateDefinition): Promise<void> {
@@ -401,53 +312,8 @@ export class TemplatesComponent implements OnDestroy {
     await this.emailTemplateDefinitions.archive(companyId, template.id, !template.archived);
   }
 
-  protected async setDefaultEmailTemplate(template: EmailTemplateDefinition, scenario: EmailTemplateScenario): Promise<void> {
-    if (!template.id) return;
-    const companyId = await this.companyContext.requireCompanyIdOnce();
-    await this.emailTemplateDefinitions.setDefaultForScenario(companyId, template, scenario);
-  }
-
-  protected async openEmailMoreMenu(template: EmailTemplateDefinition): Promise<void> {
-    const action = window.prompt(
-      `Choose action: ${template.archived ? 'restore' : 'archive'}, default, duplicate`,
-      template.archived ? 'restore' : 'default'
-    );
-    if (!action) return;
-
-    try {
-      switch (action.toLowerCase()) {
-        case 'archive':
-        case 'restore':
-          await this.archiveDesignedEmailTemplate(template);
-          break;
-        case 'duplicate':
-        case 'copy':
-          await this.duplicateDesignedEmailTemplate(template);
-          break;
-        case 'default':
-        case 'set default': {
-          const compatible = this.compatibleScenarios(template);
-          const scenario = window.prompt(
-            `Set as default for: ${compatible.map(item => `${item.label} (${item.value})`).join(', ')}`,
-            compatible[0]?.value ?? ''
-          ) as EmailTemplateScenario | null;
-          if (scenario && compatible.some(item => item.value === scenario)) {
-            await this.setDefaultEmailTemplate(template, scenario);
-          }
-          break;
-        }
-      }
-    } catch (e: any) {
-      this.error.set(e?.message ?? 'Unable to update email template.');
-    }
-  }
-
   protected scenarioLabel(scenario: EmailTemplateScenario): string {
     return this.scenarios.find(item => item.value === scenario)?.label ?? scenario;
-  }
-
-  protected compatibleScenarios(template: EmailTemplateDefinition): typeof EMAIL_TEMPLATE_SCENARIOS {
-    return this.scenarios.filter(scenario => scenario.type === template.type);
   }
 
   protected newEmailTemplate(): void {
@@ -468,12 +334,7 @@ export class TemplatesComponent implements OnDestroy {
   private async loadCompanyTemplates(): Promise<void> {
     try {
       const companyId = await this.companyContext.requireCompanyIdOnce();
-      await this.emailTemplateService.ensureDefaults(companyId);
       this.emailTemplateDefinitions.list(companyId).subscribe(templates => this.designedEmailTemplates.set(templates));
-      this.emailTemplateService.list(companyId).subscribe(templates => {
-        this.emailTemplates.set(templates);
-        if (!this.selectedEmailTemplate() && templates.length) this.selectEmailTemplate(templates[0]);
-      });
       collectionData(collection(this.db, `companies/${companyId}/templates`), { idField: 'id' }).subscribe({
         next: templates => {
           this.templates.set((templates as CompanyTemplate[]).map(template => this.toTemplateCard(companyId, template)));

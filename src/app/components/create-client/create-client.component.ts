@@ -4,11 +4,12 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ClientService } from '../../services/client.service';
 import { Client, ClientType } from '../../models/client.model';
 import { map, Observable } from 'rxjs';
+import { AddressFieldsComponent } from '../address-fields/address-fields.component';
 
 @Component({
   selector: 'app-create-client',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, AddressFieldsComponent],
   templateUrl: './create-client.component.html',
   styleUrl: './create-client.component.scss'
 })
