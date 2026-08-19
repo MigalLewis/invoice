@@ -36,11 +36,17 @@ export interface NexusManagedFallbackProvider {
   mode: 'nexus_managed_fallback';
   enabled: boolean;
   configured?: boolean;
+  /** A validated company mailbox used only for replies; never as From. */
+  replyToEmail?: string;
+  effectiveFromEmail?: string;
+  dailyQuota?: number;
 }
 
 export interface CompanyEmailSettings {
   companyId: string;
   defaultProvider: EmailProvider;
+  /** False until an administrator/user deliberately saves a provider choice. */
+  onboardingCompleted?: boolean;
   selectedSender?: EmailSenderIdentity;
   gmail?: ProviderConnectionSettings;
   microsoftExchange?: ProviderConnectionSettings;
@@ -58,6 +64,7 @@ export const EMAIL_PROVIDER_LABELS: Record<EmailProvider, string> = {
 
 export const DEFAULT_EMAIL_SETTINGS: Omit<CompanyEmailSettings, 'companyId'> = {
   defaultProvider: 'nexus_fallback',
+  onboardingCompleted: false,
   gmail: { connected: false },
   microsoftExchange: { connected: false },
   sendgrid: { mode: 'company_owned_sendgrid', connected: false, apiKeyConfigured: false },

@@ -23,7 +23,7 @@ for (const provider of ['gmail', 'microsoft_exchange', 'company_sendgrid', 'nexu
     const response = await dispatchEmail({ requestedProvider: provider, integrations: integrationsFor(provider), message, adapters });
 
     assert.deepEqual(calls, [provider]);
-    assert.deepEqual(response, { provider, messageId: `${provider}-id`, accepted: true, sentAt: response.sentAt });
+    assert.deepEqual(response, { provider, effectiveProvider: provider, requestedProvider: provider, fallbackReason: null, messageId: `${provider}-id`, accepted: true, sentAt: response.sentAt });
   });
 }
 
@@ -44,6 +44,9 @@ test('an unavailable provider uses only an explicitly enabled fallback', async (
   });
   assert.deepEqual(calls, ['nexus_fallback']);
   assert.equal(response.provider, 'nexus_fallback');
+  assert.equal(response.effectiveProvider, 'nexus_fallback');
+  assert.equal(response.requestedProvider, 'gmail');
+  assert.equal(response.fallbackReason, 'gmail_unavailable');
 });
 
 test('legacy sendgrid selection routes to the company adapter', async () => {
