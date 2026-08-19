@@ -11,6 +11,17 @@ Firebase Functions deploy through the **Deploy Firebase Functions** GitHub Actio
 
 Hosting workflows remain separate and do not deploy Functions.
 
+### SendGrid deployment and operations
+
+Outbound mail has two deliberately separate modes:
+
+- **Nexus managed fallback** uses only `SENDGRID_API_KEY` and `SENDGRID_FROM_EMAIL`. `SENDGRID_FROM_EMAIL` must be an address on the Nexus-owned, SendGrid-authenticated sending domain. A company address is added only as `reply_to`; it is never used as the envelope From identity with the platform key.
+- **Company-owned SendGrid** uses `COMPANY_SENDGRID_CREDENTIALS`, an administrator-managed Secret Manager JSON value keyed by company ID, for example `{"company-id":{"apiKey":"SG.…","fromEmail":"billing@example.com","fromName":"Example Billing"}}`. Do not put this key in Firestore company documents, frontend configuration, logs, support tickets, or browser forms. After provisioning, an authenticated company member must select **Test connection and verify sender**; the backend tests the key and confirms a verified sender or authenticated domain before recording connected public metadata.
+
+Before deployment, set all applicable Firebase secrets with `firebase functions:secrets:set NAME`, grant the Functions runtime service account secret access, and deploy Functions so the secret bindings take effect. The Nexus SendGrid account must have its sending domain authenticated with valid **DKIM** and **SPF** DNS records. Configure branded link tracking for the Nexus domain (or disable click tracking if it cannot be branded), HTTPS links, bounce/event handling, suppression processing, and a monitored return path. Verify these settings in SendGrid after every DNS or account change.
+
+Rotate platform and company API keys on a regular schedule and immediately after suspected exposure. Create a least-privilege replacement key, update the relevant secret, redeploy Functions, run the connection/sender check, send a monitored test, and only then revoke the old key. Rotation must not change the authenticated From domain accidentally; re-check DKIM/SPF, branded links, bounce events, and suppression processing after rotation.
+
 This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 18.2.20.
 
 ## Development server

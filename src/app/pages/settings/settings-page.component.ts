@@ -221,8 +221,8 @@ export class SettingsPageComponent {
         selectedSender: emailSenderFor(value.defaultProvider, value),
         gmail: { connected: !!this.emailSettings()?.gmail?.connected, accountEmail: value.gmailAccountEmail || undefined },
         microsoftExchange: { connected: !!this.emailSettings()?.microsoftExchange?.connected, accountEmail: value.exchangeAccountEmail || undefined, tenantId: value.exchangeTenantId || undefined },
-        sendgrid: { connected: !!this.emailSettings()?.sendgrid?.connected, apiKeyConfigured: !!this.emailSettings()?.sendgrid?.apiKeyConfigured, fromEmail: value.sendgridFromEmail || undefined, fromName: value.sendgridFromName || undefined },
-        nexusFallback: { enabled: value.nexusFallbackEnabled, configured: this.nexusFallbackConfigured() }
+        sendgrid: { mode: 'company_owned_sendgrid', ...this.emailSettings()?.sendgrid, connected: !!this.emailSettings()?.sendgrid?.connected },
+        nexusFallback: { mode: 'nexus_managed_fallback', enabled: value.nexusFallbackEnabled, configured: this.nexusFallbackConfigured() }
       });
       this.message.set('Email integration settings saved. Complete provider authorization in the backend connection flow before sending mail.');
     } finally {
@@ -256,6 +256,22 @@ export class SettingsPageComponent {
     } catch (error: any) {
       this.message.set(error?.message || 'Unable to start email connection.');
     }
+  }
+
+  async verifyCompanySendGrid(): Promise<void> {
+    const companyId = this.companyId();
+    if (!companyId) return;
+    this.savingEmail.set(true);
+    this.message.set('');
+    try {
+      const sendgrid = await this.emailService.verifyCompanySendGrid(companyId);
+      const current = this.emailSettings();
+      if (current) this.emailSettings.set({ ...current, sendgrid });
+      this.emailForm.patchValue({ sendgridFromEmail: sendgrid?.fromEmail || '', sendgridFromName: sendgrid?.fromName || '' });
+      this.message.set('Company SendGrid connection and sending identity verified.');
+    } catch (error: any) {
+      this.message.set(error?.message || 'Company SendGrid verification failed. Ask an administrator to check the secret and sender authentication.');
+    } finally { this.savingEmail.set(false); }
   }
 
   async disconnectEmailProvider(provider: 'gmail' | 'microsoft_exchange'): Promise<void> {

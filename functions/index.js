@@ -11,6 +11,9 @@ admin.initializeApp();
 
 const sendGridApiKey = defineSecret('SENDGRID_API_KEY');
 const sendGridFromEmail = defineSecret('SENDGRID_FROM_EMAIL');
+// JSON object keyed by company ID. This administrator-managed Secret Manager
+// value is the only supported location for company SendGrid API keys.
+const companySendGridCredentials = defineSecret('COMPANY_SENDGRID_CREDENTIALS');
 // Gmail intentionally has its own OAuth application. Do not substitute Drive
 // credentials unless that OAuth client was explicitly registered for both.
 const gmailClientId = defineSecret('GMAIL_OAUTH_CLIENT_ID');
@@ -196,14 +199,21 @@ async function buildEmailContent(data) {
     : [{ type: 'text/plain', value: data.messageBody }];
 }
 
-function buildSendGridPayload(message, fromEmail, metadata) {
+function validatedDisplayName(value) {
+  const name = String(value || '').trim();
+  return name && name.length <= 100 && !/[\r\n<>]/.test(name) ? name : undefined;
+}
+
+function buildSendGridPayload(message, fromEmail, metadata, options = {}) {
+  const fromName = options.fromNameValidated ? validatedDisplayName(options.fromName) : undefined;
   return {
     personalizations: [{
       to: message.to.map(email => ({ email })),
       cc: message.cc.map(email => ({ email })),
       bcc: message.bcc.map(email => ({ email })),
     }],
-    from: { email: message.sender.email || fromEmail, name: message.sender.displayName || undefined },
+    from: { email: fromEmail, name: fromName },
+    ...(options.replyTo && EMAIL_PATTERN.test(options.replyTo) ? { reply_to: { email: options.replyTo } } : {}),
     subject: message.subject,
     content: [{ type: 'text/plain', value: message.text }, ...(message.html ? [{ type: 'text/html', value: message.html }] : [])],
     attachments: message.attachments,
@@ -211,7 +221,7 @@ function buildSendGridPayload(message, fromEmail, metadata) {
   };
 }
 
-async function sendWithSendGrid(message, credentials, metadata) {
+async function sendWithSendGrid(message, credentials, metadata, options = {}) {
   const apiKey = credentials.apiKey;
   const fromEmail = credentials.fromEmail;
   if (!apiKey || !fromEmail) {
@@ -224,7 +234,7 @@ async function sendWithSendGrid(message, credentials, metadata) {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(buildSendGridPayload(message, fromEmail, metadata)),
+    body: JSON.stringify(buildSendGridPayload(message, fromEmail, metadata, options)),
   });
 
   if (!response.ok) {
@@ -249,16 +259,58 @@ async function sendWithMicrosoftGraph(message, integrations) {
 
 async function sendWithCompanySendGrid(message, integrations) {
   const settings = integrations.sendgrid || {};
-  return sendWithSendGrid(message, { apiKey: settings.apiKey, fromEmail: settings.fromEmail }, message.sender.metadata);
+  const credentials = companySendGridCredential(message.sender.companyId);
+  if (!settings.connected || (!settings.senderVerified && !settings.domainVerified) || credentials.fromEmail !== settings.fromEmail) {
+    throw new HttpsError('failed-precondition', 'The company SendGrid sender has not been verified.');
+  }
+  await validateCompanySendGridCredential(credentials);
+  return sendWithSendGrid(message, credentials, message.sender.metadata, {
+    fromName: credentials.fromName, fromNameValidated: settings.fromNameValidated === true,
+  });
 }
 
 async function sendWithNexusFallback(message) {
-  return sendWithSendGrid(message, { apiKey: sendGridApiKey.value(), fromEmail: sendGridFromEmail.value() }, message.sender.metadata);
+  return sendWithSendGrid(
+    message,
+    { apiKey: sendGridApiKey.value(), fromEmail: sendGridFromEmail.value() },
+    message.sender.metadata,
+    { replyTo: message.sender.companyEmail }
+  );
+}
+
+function companySendGridCredential(companyId) {
+  let credentials;
+  try { credentials = JSON.parse(companySendGridCredentials.value() || '{}')[companyId]; }
+  catch (_) { throw new HttpsError('failed-precondition', 'Company SendGrid credential secret is invalid.'); }
+  if (!credentials?.apiKey || !EMAIL_PATTERN.test(credentials?.fromEmail || '')) {
+    throw new HttpsError('failed-precondition', 'Company SendGrid credentials are not provisioned by an administrator.');
+  }
+  return credentials;
+}
+
+async function sendGridJson(apiKey, path) {
+  const response = await fetch(`https://api.sendgrid.com/v3/${path}`, { headers: { Authorization: `Bearer ${apiKey}` } });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new HttpsError('failed-precondition', `SendGrid connection test failed (${response.status}).`);
+  return body;
+}
+
+async function validateCompanySendGridCredential(credentials) {
+  await sendGridJson(credentials.apiKey, 'scopes');
+  const [sendersBody, domainsBody] = await Promise.all([
+    sendGridJson(credentials.apiKey, 'verified_senders'),
+    sendGridJson(credentials.apiKey, 'whitelabel/domains'),
+  ]);
+  const senderVerified = (sendersBody.results || []).some(sender => sender.verified === true && String(sender.from_email || '').toLowerCase() === credentials.fromEmail.toLowerCase());
+  const domain = credentials.fromEmail.split('@')[1].toLowerCase();
+  const domainVerified = (Array.isArray(domainsBody) ? domainsBody : []).some(item => item.valid === true && (domain === String(item.domain || '').toLowerCase() || domain.endsWith(`.${String(item.domain || '').toLowerCase()}`)));
+  if (!senderVerified && !domainVerified) throw new HttpsError('failed-precondition', 'SendGrid From address or domain is not verified.');
+  return { senderVerified, domainVerified };
 }
 
 const microsoftEmailSecrets = [microsoftEmailClientId, microsoftEmailClientSecret, microsoftEmailRedirectUri, microsoftEmailAllowedTenants];
 
-exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail, gmailClientId, gmailClientSecret, gmailRedirectUri, ...microsoftEmailSecrets] }, async request => {
+exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail, companySendGridCredentials, gmailClientId, gmailClientSecret, gmailRedirectUri, ...microsoftEmailSecrets] }, async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required to send email.');
   const data = request.data || {};
   const errors = validatePayload(data);
@@ -273,7 +325,7 @@ exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail
     text: content.find(item => item.type === 'text/plain')?.value || '',
     html: content.find(item => item.type === 'text/html')?.value,
     attachments: [await resolveEmailAttachment(data)],
-    sender: { ...integrations.selectedSender, companyId: data.companyId, metadata: {
+    sender: { ...integrations.selectedSender, companyEmail: company.email, companyId: data.companyId, metadata: {
       companyId: data.companyId, clientId: data.clientId, documentType: data.documentType,
       documentId: data.documentId, storagePath: data.attachment.storagePath,
     } },
@@ -283,6 +335,24 @@ exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail
     configuration: { gmail: gmailProvider().configured(), microsoftExchange: microsoftEmailProvider().configured(), nexusFallback: !!sendGridApiKey.value() && !!sendGridFromEmail.value() },
     adapters: { gmail: sendWithGmail, microsoft_exchange: sendWithMicrosoftGraph, company_sendgrid: sendWithCompanySendGrid, nexus_fallback: sendWithNexusFallback },
   });
+});
+
+exports.verifyCompanySendGrid = onCall({ secrets: [companySendGridCredentials] }, async request => {
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  const { companyId } = request.data || {};
+  if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+  await assertCompanyMember(request.auth.uid, companyId);
+  const credentials = companySendGridCredential(companyId);
+  const validation = await validateCompanySendGridCredential(credentials);
+  const publicState = {
+    mode: 'company_owned_sendgrid', connected: true, apiKeyConfigured: true,
+    credentialReference: `COMPANY_SENDGRID_CREDENTIALS:${companyId}`,
+    fromEmail: credentials.fromEmail, fromName: validatedDisplayName(credentials.fromName),
+    fromNameValidated: !!validatedDisplayName(credentials.fromName), ...validation,
+    connectionTestedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  await admin.firestore().doc(`companies/${companyId}`).set({ emailIntegrations: { sendgrid: publicState } }, { merge: true });
+  return publicState;
 });
 
 const gmailSecrets = [gmailClientId, gmailClientSecret, gmailRedirectUri];

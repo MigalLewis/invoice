@@ -9,8 +9,8 @@ function integrationsFor(provider) {
     defaultProvider: provider,
     gmail: { connected: true },
     microsoftExchange: { connected: true },
-    sendgrid: { connected: true, apiKeyConfigured: true },
-    nexusFallback: { enabled: true },
+    sendgrid: { mode: 'company_owned_sendgrid', connected: true, apiKeyConfigured: true, senderVerified: true },
+    nexusFallback: { mode: 'nexus_managed_fallback', enabled: true },
   };
 }
 
@@ -38,7 +38,7 @@ test('an unavailable provider uses only an explicitly enabled fallback', async (
   const calls = [];
   const response = await dispatchEmail({
     requestedProvider: 'gmail',
-    integrations: { gmail: { connected: false }, nexusFallback: { enabled: true } },
+    integrations: { gmail: { connected: false }, nexusFallback: { mode: 'nexus_managed_fallback', enabled: true } },
     message,
     adapters: { nexus_fallback: async () => { calls.push('nexus_fallback'); return 'fallback-id'; } },
   });

@@ -43,11 +43,11 @@ describe('EmailIntegrationService', () => {
   it('requires configured API metadata for SendGrid connection status', () => {
     const missingApiKey = (service as any).normalizeCompanySettings('company-1', {
       defaultProvider: 'company_sendgrid',
-      sendgrid: { connected: true, apiKeyConfigured: false }
+      sendgrid: { mode: 'company_owned_sendgrid', connected: true, apiKeyConfigured: false }
     });
     const configured = (service as any).normalizeCompanySettings('company-1', {
       defaultProvider: 'company_sendgrid',
-      sendgrid: { connected: true, apiKeyConfigured: true }
+      sendgrid: { mode: 'company_owned_sendgrid', connected: true, apiKeyConfigured: true }
     });
 
     expect(service.connectionStatus(missingApiKey, 'company_sendgrid')).toBe('needs_configuration');

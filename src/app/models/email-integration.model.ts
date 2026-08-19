@@ -20,14 +20,32 @@ export interface ProviderConnectionSettings {
   webhookConfigured?: boolean;
 }
 
+/** Public, non-secret state for a company-owned SendGrid account. Credentials
+ * are resolved by Functions from COMPANY_SENDGRID_CREDENTIALS. */
+export interface CompanyOwnedSendGridProvider extends ProviderConnectionSettings {
+  mode: 'company_owned_sendgrid';
+  credentialReference?: string;
+  senderVerified?: boolean;
+  domainVerified?: boolean;
+  connectionTestedAt?: any;
+  fromNameValidated?: boolean;
+}
+
+/** Nexus always sends with the platform credential and Nexus sending domain. */
+export interface NexusManagedFallbackProvider {
+  mode: 'nexus_managed_fallback';
+  enabled: boolean;
+  configured?: boolean;
+}
+
 export interface CompanyEmailSettings {
   companyId: string;
   defaultProvider: EmailProvider;
   selectedSender?: EmailSenderIdentity;
   gmail?: ProviderConnectionSettings;
   microsoftExchange?: ProviderConnectionSettings;
-  sendgrid?: ProviderConnectionSettings;
-  nexusFallback?: { enabled: boolean; configured?: boolean };
+  sendgrid?: CompanyOwnedSendGridProvider;
+  nexusFallback?: NexusManagedFallbackProvider;
   updatedAt?: any;
 }
 
@@ -42,6 +60,6 @@ export const DEFAULT_EMAIL_SETTINGS: Omit<CompanyEmailSettings, 'companyId'> = {
   defaultProvider: 'nexus_fallback',
   gmail: { connected: false },
   microsoftExchange: { connected: false },
-  sendgrid: { connected: false, apiKeyConfigured: false },
-  nexusFallback: { enabled: false, configured: false },
+  sendgrid: { mode: 'company_owned_sendgrid', connected: false, apiKeyConfigured: false },
+  nexusFallback: { mode: 'nexus_managed_fallback', enabled: false, configured: false },
 };
