@@ -53,6 +53,7 @@ function createSendCoordinator({ db, FieldValue }) {
         subject: data.subject, emailProvider: latest.effectiveProvider,
         effectiveEmailProvider: latest.effectiveProvider, emailFallbackReason: latest.fallbackReason || null,
         emailSendRecordId: recordRef.id, emailProviderMessageId: latest.providerMessageId,
+        status: latest.status, failureReason: latest.failureReason || null,
       };
       const update = { ...metadata, lastEmail: metadata, updatedAt: sentAt };
       if (data.documentType === 'invoice' && document.record.status === 'draft') update.status = 'sent';

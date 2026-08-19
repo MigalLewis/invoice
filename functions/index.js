@@ -7,12 +7,13 @@ const { createGmailProvider } = require('./email/providers/gmail');
 const { createMicrosoftProvider } = require('./email/providers/microsoft');
 const { dispatchEmail, resolveRoute } = require('./email/dispatcher');
 const { createSendCoordinator, recordIdFor } = require('./email/send-coordinator');
+const { verifySendGridSignature, normalizeSendGridEvent, eventUpdate, suppressionBlockReason } = require('./email/email-status');
 
 admin.initializeApp();
 
 const sendGridApiKey = defineSecret('SENDGRID_API_KEY');
 const sendGridFromEmail = defineSecret('SENDGRID_FROM_EMAIL');
-const sendGridEventWebhookToken = defineSecret('SENDGRID_EVENT_WEBHOOK_TOKEN');
+const sendGridEventWebhookPublicKey = defineSecret('SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY');
 // JSON object keyed by company ID. This administrator-managed Secret Manager
 // value is the only supported location for company SendGrid API keys.
 const companySendGridCredentials = defineSecret('COMPANY_SENDGRID_CREDENTIALS');
@@ -434,6 +435,9 @@ exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail
   const nexusConfigured = nexusEnabled() && !!sendGridApiKey.value() && !!sendGridFromEmail.value();
   const configuration = { gmail: gmailProvider().configured(), microsoftExchange: microsoftEmailProvider().configured(), nexusFallback: nexusConfigured };
   const route = resolveRoute(data.provider, integrations, configuration);
+  const suppression = await admin.firestore().doc(`companies/${data.companyId}/emailSuppressions/${recipientHash(data.recipient)}`).get();
+  const suppressionReason = suppressionBlockReason(suppression.exists ? suppression.data() : null);
+  if (suppressionReason) throw new HttpsError('failed-precondition', suppressionReason);
   const replyToEmail = String(integrations.nexusFallback?.replyToEmail || '').trim().toLowerCase();
   if (route.provider === 'nexus_fallback') {
     if (!EMAIL_PATTERN.test(replyToEmail)) throw new HttpsError('failed-precondition', 'A valid company Reply-To address is required for Nexus managed email.');
@@ -497,35 +501,68 @@ exports.getEmailProviderConfiguration = onCall({ secrets: [...gmailSecrets, ...m
   return { gmail: gmailProvider().configured(), microsoftExchange: microsoftEmailProvider().configured(), nexusFallback, nexusFromEmail: nexusFallback ? sendGridFromEmail.value() : undefined, microsoftTenantPolicy: microsoftEmailProvider().tenantPolicy().mode };
 });
 
-// Configure SendGrid Event Webhook to include this bearer token. Permanent
-// failures and complaints are enforced before any later Nexus send.
-exports.sendGridEventWebhook = onRequest({ secrets: [sendGridEventWebhookToken] }, async (request, response) => {
-  const supplied = String(request.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  if (!sendGridEventWebhookToken.value() || supplied !== sendGridEventWebhookToken.value()) {
-    response.status(401).send('Unauthorized'); return;
+// Configure SendGrid Event Webhook with Twilio SendGrid signed-event verification.
+// The public verification key is safe to rotate independently of API credentials.
+exports.sendGridEventWebhook = onRequest({ secrets: [sendGridEventWebhookPublicKey] }, async (request, response) => {
+  const signature = request.get('x-twilio-email-event-webhook-signature');
+  const timestamp = request.get('x-twilio-email-event-webhook-timestamp');
+  if (!verifySendGridSignature({
+    publicKey: sendGridEventWebhookPublicKey.value(), signature, timestamp,
+    rawBody: request.rawBody,
+  })) {
+    response.status(401).send('Invalid webhook signature'); return;
   }
-  const events = Array.isArray(request.body) ? request.body : [];
-  const suppressing = new Set(['bounce', 'dropped', 'spamreport', 'unsubscribe', 'group_unsubscribe']);
-  const delivered = new Set(['delivered']);
-  const batch = admin.firestore().batch();
-  for (const event of events.slice(0, 1000)) {
-    const companyId = String(event.companyId || '');
-    const email = String(event.email || '').trim().toLowerCase();
-    if (!/^[A-Za-z0-9_-]{1,128}$/.test(companyId) || !EMAIL_PATTERN.test(email)) continue;
-    if (suppressing.has(event.event)) {
-      const ref = admin.firestore().doc(`companies/${companyId}/emailSuppressions/${recipientHash(email)}`);
-      batch.set(ref, { active: true, reason: event.event, provider: 'nexus_fallback', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+
+  const events = Array.isArray(request.body) ? request.body.slice(0, 1000) : [];
+  const db = admin.firestore();
+  for (const rawEvent of events) {
+    const event = normalizeSendGridEvent(rawEvent);
+    if (!event?.companyId || !EMAIL_PATTERN.test(event.email)) continue;
+    let recordRef = event.sendRecordId
+      ? db.doc(`companies/${event.companyId}/emailSendRecords/${event.sendRecordId}`) : null;
+    if (!recordRef && event.providerMessageId) {
+      const matches = await db.collection(`companies/${event.companyId}/emailSendRecords`)
+        .where('providerMessageId', '==', event.providerMessageId).limit(1).get();
+      recordRef = matches.empty ? null : matches.docs[0].ref;
     }
-    const sendRecordId = String(event.sendRecordId || '');
-    if (/^[a-f0-9]{64}$/.test(sendRecordId) && (suppressing.has(event.event) || delivered.has(event.event))) {
-      const recordRef = admin.firestore().doc(`companies/${companyId}/emailSendRecords/${sendRecordId}`);
-      const timestamp = admin.firestore.FieldValue.serverTimestamp();
-      batch.set(recordRef, suppressing.has(event.event)
-        ? { status: 'bounced', bouncedAt: timestamp, providerEvent: event.event, updatedAt: timestamp }
-        : { status: 'delivered', deliveredAt: timestamp, updatedAt: timestamp }, { merge: true });
-    }
+    if (!recordRef) continue; // Valid provider event, but not one of our sends.
+
+    await db.runTransaction(async transaction => {
+      const snapshot = await transaction.get(recordRef);
+      if (!snapshot.exists) return;
+      const current = snapshot.data() || {};
+      const update = eventUpdate(current, event);
+      if (!update || update.ignored) return;
+      const processedEventIds = [...(current.processedEventIds || []).slice(-49), event.eventId];
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      const recordUpdate = {
+        status: update.status, providerEvent: update.providerEvent,
+        providerEventId: update.providerEventId, providerEventTimestamp: update.providerEventTimestamp,
+        failureReason: update.failureReason, processedEventIds, updatedAt: now,
+      };
+      transaction.set(recordRef, recordUpdate, { merge: true });
+      if (current.documentPath) {
+        transaction.update(db.doc(current.documentPath), {
+          'lastEmail.status': update.status, 'lastEmail.failureReason': update.failureReason,
+          'lastEmail.updatedAt': now, updatedAt: now,
+        });
+      }
+      if (current.documentType === 'invoice') {
+        transaction.update(db.doc(`companies/${event.companyId}/invoiceSummaries/${current.documentId}`), {
+          'lastEmail.status': update.status, 'lastEmail.failureReason': update.failureReason,
+          'lastEmail.updatedAt': now, updatedAt: now,
+        });
+      }
+      if (event.suppress) {
+        transaction.set(db.doc(`companies/${event.companyId}/emailSuppressions/${recipientHash(event.email)}`), {
+          active: true, companyId: event.companyId, clientId: current.clientId || null,
+          recipientHash: recipientHash(event.email), reason: update.status,
+          provider: current.effectiveProvider || 'sendgrid', sendRecordId: recordRef.id,
+          updatedAt: now,
+        }, { merge: true });
+      }
+    });
   }
-  await batch.commit();
   response.status(204).send();
 });
 
