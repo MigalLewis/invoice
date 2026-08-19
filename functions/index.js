@@ -6,6 +6,7 @@ const { randomUUID, createHash } = require('crypto');
 const { createGmailProvider } = require('./email/providers/gmail');
 const { createMicrosoftProvider } = require('./email/providers/microsoft');
 const { dispatchEmail, resolveRoute } = require('./email/dispatcher');
+const { createSendCoordinator, recordIdFor } = require('./email/send-coordinator');
 
 admin.initializeApp();
 
@@ -70,6 +71,7 @@ function validatePayload(data) {
   if (!data.clientId) errors.push('clientId is required');
   if (data.documentType !== 'invoice' && data.documentType !== 'letter') errors.push('documentType must be invoice or letter');
   if (!data.documentId) errors.push('documentId is required');
+  if (!/^[A-Za-z0-9_-]{16,128}$/.test(String(data.idempotencyKey || ''))) errors.push('idempotencyKey must be 16-128 URL-safe characters');
   for (const [field, value] of [['companyId', data.companyId], ['clientId', data.clientId], ['documentId', data.documentId]]) {
     if (value && !/^[A-Za-z0-9_-]{1,128}$/.test(String(value))) errors.push(`${field} is invalid`);
   }
@@ -450,29 +452,21 @@ exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail
     sender: { ...integrations.selectedSender, companyName: company.name, replyToEmail, companyId: document.companyId, metadata: {
       companyId: document.companyId, clientId: document.clientId, documentType: document.documentType,
       documentId: document.documentId, storagePath: data.attachment.storagePath,
+      sendRecordId: recordIdFor(data),
     } },
   };
-  const recordRef = admin.firestore().collection(`companies/${data.companyId}/emailSendRecords`).doc();
-  const audit = {
-    requestedProvider: route.requestedProvider, effectiveProvider: route.provider,
-    fallbackReason: route.fallbackReason, recipientHash: recipientHash(data.recipient),
-    companyId: document.companyId, clientId: document.clientId,
-    documentType: document.documentType, documentId: document.documentId, documentPath: document.path,
-    attachmentStoragePath: data.attachment.storagePath, sentBy: request.auth.uid,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(), status: 'attempting',
-  };
-  await recordRef.set(audit);
-  try {
-    const result = await dispatchEmail({
+  const coordinate = createSendCoordinator({ db: admin.firestore(), FieldValue: admin.firestore.FieldValue });
+  return coordinate({
+    data: { ...data, cc: normalizeEmailList(data.cc), bcc: normalizeEmailList(data.bcc), recipientHash: recipientHash(data.recipient) },
+    document, uid: request.auth.uid, route,
+    effectiveFrom: route.provider === 'nexus_fallback'
+      ? sendGridFromEmail.value()
+      : (integrations.selectedSender?.email || company.email || undefined),
+    dispatch: () => dispatchEmail({
       requestedProvider: data.provider, integrations, message, configuration,
       adapters: { gmail: sendWithGmail, microsoft_exchange: sendWithMicrosoftGraph, company_sendgrid: sendWithCompanySendGrid, nexus_fallback: sendWithNexusFallback },
-    });
-    await recordRef.set({ status: 'accepted', messageId: result.messageId, completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-    return { ...result, sendRecordId: recordRef.id, effectiveFrom: route.provider === 'nexus_fallback' ? sendGridFromEmail.value() : undefined };
-  } catch (error) {
-    await recordRef.set({ status: 'failed', failureCode: error?.code || 'internal', completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-    throw error;
-  }
+    }),
+  });
 });
 
 exports.verifyCompanySendGrid = onCall({ secrets: [companySendGridCredentials] }, async request => {
@@ -512,13 +506,24 @@ exports.sendGridEventWebhook = onRequest({ secrets: [sendGridEventWebhookToken] 
   }
   const events = Array.isArray(request.body) ? request.body : [];
   const suppressing = new Set(['bounce', 'dropped', 'spamreport', 'unsubscribe', 'group_unsubscribe']);
+  const delivered = new Set(['delivered']);
   const batch = admin.firestore().batch();
   for (const event of events.slice(0, 1000)) {
     const companyId = String(event.companyId || '');
     const email = String(event.email || '').trim().toLowerCase();
-    if (!/^[A-Za-z0-9_-]{1,128}$/.test(companyId) || !EMAIL_PATTERN.test(email) || !suppressing.has(event.event)) continue;
-    const ref = admin.firestore().doc(`companies/${companyId}/emailSuppressions/${recipientHash(email)}`);
-    batch.set(ref, { active: true, reason: event.event, provider: 'nexus_fallback', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(companyId) || !EMAIL_PATTERN.test(email)) continue;
+    if (suppressing.has(event.event)) {
+      const ref = admin.firestore().doc(`companies/${companyId}/emailSuppressions/${recipientHash(email)}`);
+      batch.set(ref, { active: true, reason: event.event, provider: 'nexus_fallback', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    }
+    const sendRecordId = String(event.sendRecordId || '');
+    if (/^[a-f0-9]{64}$/.test(sendRecordId) && (suppressing.has(event.event) || delivered.has(event.event))) {
+      const recordRef = admin.firestore().doc(`companies/${companyId}/emailSendRecords/${sendRecordId}`);
+      const timestamp = admin.firestore.FieldValue.serverTimestamp();
+      batch.set(recordRef, suppressing.has(event.event)
+        ? { status: 'bounced', bouncedAt: timestamp, providerEvent: event.event, updatedAt: timestamp }
+        : { status: 'delivered', deliveredAt: timestamp, updatedAt: timestamp }, { merge: true });
+    }
   }
   await batch.commit();
   response.status(204).send();
