@@ -95,13 +95,14 @@ function createMicrosoftProvider({ db, fetchImpl = fetch, clientId, clientSecret
     const identity = await graph(tokens.access_token, '/me?$select=mail,userPrincipalName,displayName,id');
     const accountEmail = normalizeEmail(identity.mail || identity.userPrincipalName);
     if (!accountEmail) throw new Error('mailbox_missing');
-    await tokenRef(bound.companyId).set({ refreshToken: tokens.refresh_token, accessToken: tokens.access_token, accessTokenExpiresAt: new Date(now() + Number(tokens.expires_in || 3600) * 1000), accountEmail, tenantId, userId: identity.id, scopes: tokens.scope || SCOPES.join(' '), connectedBy: bound.uid, updatedAt: new Date(now()) });
-    await db.doc(`companies/${bound.companyId}`).set({ emailIntegrations: { microsoftExchange: { connected: true, configured: true, accountEmail, tenantId, connectedBy: bound.uid, connectedAt: new Date(now()) } } }, { merge: true });
+    await tokenRef(bound.companyId).set({ refreshToken: tokens.refresh_token, accessToken: tokens.access_token, accessTokenExpiresAt: new Date(now() + Number(tokens.expires_in || 3600) * 1000), accountEmail, tenantId, userId: identity.id, scopes: tokens.scope || SCOPES.join(' '), connectedBy: bound.uid, connectedAt: new Date(now()), health: 'healthy', updatedAt: new Date(now()) });
+    await db.doc(`companies/${bound.companyId}/emailIntegration/status`).set({ microsoftExchange: { connected: true, configured: true } }, { merge: true });
     return { ...bound, accountEmail, tenantId };
   }
 
   async function markDisconnected(companyId, reason) {
-    await db.doc(`companies/${companyId}`).set({ emailIntegrations: { microsoftExchange: { connected: false, configured: configured(), health: reason } } }, { merge: true });
+    await tokenRef(companyId).set({ health: reason, updatedAt: new Date(now()) }, { merge: true });
+    await db.doc(`companies/${companyId}/emailIntegration/status`).set({ microsoftExchange: { connected: false, configured: configured() } }, { merge: true });
   }
 
   async function accessToken(companyId, forceRefresh = false) {
@@ -137,8 +138,8 @@ function createMicrosoftProvider({ db, fetchImpl = fetch, clientId, clientSecret
   }
 
   async function approvedSenders(companyId, accountEmail) {
-    const company = (await db.doc(`companies/${companyId}`).get()).data() || {};
-    const shared = company.emailIntegrations?.microsoftExchange?.approvedSharedMailboxes || [];
+    const status = (await db.doc(`companies/${companyId}/emailIntegration/status`).get()).data() || {};
+    const shared = status.microsoftExchange?.approvedSharedMailboxes || [];
     return new Set([accountEmail, ...shared].map(normalizeEmail).filter(Boolean));
   }
 

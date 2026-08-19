@@ -60,7 +60,7 @@ test('revoked consent marks the connection unhealthy', async () => {
   await db.doc('companies/c1/privateEmailTokens/gmail').set({ refreshToken: 'revoked', accessTokenExpiresAt: new Date(1), accountEmail: 'me@example.com' });
   const gmail = createGmailProvider({ ...config(db), fetchImpl: async () => response(400, { error: 'invalid_grant' }) });
   await assert.rejects(gmail.accessToken('c1'), /revoked_consent/);
-  assert.equal(db.values.get('companies/c1').emailIntegrations.gmail.connected, false);
+  assert.equal(db.values.get('companies/c1/emailIntegration/status').gmail.connected, false);
 });
 
 test('OAuth callback rejects a mailbox different from the requested identity', async () => {

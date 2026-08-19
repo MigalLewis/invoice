@@ -96,8 +96,8 @@ function createGmailProvider({ db, fetchImpl = fetch, clientId, clientSecret, re
     const identity = await profile(tokens.access_token);
     const email = String(identity.emailAddress || '').toLowerCase();
     if (!email || (bound.requestedMailbox && email !== String(bound.requestedMailbox).toLowerCase())) throw new Error('mailbox_mismatch');
-    await tokenRef(bound.companyId).set({ refreshToken: tokens.refresh_token, accessToken: tokens.access_token, accessTokenExpiresAt: new Date(now() + Number(tokens.expires_in || 3600) * 1000), accountEmail: email, scopes: tokens.scope || SEND_SCOPE, connectedBy: bound.uid, updatedAt: new Date(now()) });
-    await db.doc(`companies/${bound.companyId}`).set({ emailIntegrations: { gmail: { connected: true, configured: true, accountEmail: email, connectedBy: bound.uid, connectedAt: new Date(now()) } } }, { merge: true });
+    await tokenRef(bound.companyId).set({ refreshToken: tokens.refresh_token, accessToken: tokens.access_token, accessTokenExpiresAt: new Date(now() + Number(tokens.expires_in || 3600) * 1000), accountEmail: email, scopes: tokens.scope || SEND_SCOPE, connectedBy: bound.uid, connectedAt: new Date(now()), health: 'healthy', updatedAt: new Date(now()) });
+    await db.doc(`companies/${bound.companyId}/emailIntegration/status`).set({ gmail: { connected: true, configured: true } }, { merge: true });
     return { ...bound, accountEmail: email };
   }
 
@@ -118,7 +118,8 @@ function createGmailProvider({ db, fetchImpl = fetch, clientId, clientSecret, re
   }
 
   async function markDisconnected(companyId, reason) {
-    await db.doc(`companies/${companyId}`).set({ emailIntegrations: { gmail: { connected: false, configured: configured(), health: reason } } }, { merge: true });
+    await tokenRef(companyId).set({ health: reason, updatedAt: new Date(now()) }, { merge: true });
+    await db.doc(`companies/${companyId}/emailIntegration/status`).set({ gmail: { connected: false, configured: configured() } }, { merge: true });
   }
 
   async function health(companyId) {
