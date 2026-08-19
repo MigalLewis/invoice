@@ -34,7 +34,7 @@ test('refresh rotates the access and refresh tokens', async () => {
 test('send allows only the connected or explicitly approved shared mailbox', async () => {
   const db = new Db();
   await db.doc('companies/c1/privateEmailTokens/microsoft_exchange').set({ refreshToken: 'r', accessToken: 'token', accessTokenExpiresAt: new Date(2_000_000), accountEmail: 'user@example.com', tenantId: 'tenant-a' });
-  await db.doc('companies/c1').set({ emailIntegrations: { microsoftExchange: { approvedSharedMailboxes: ['billing@example.com'] } } });
+  await db.doc('companies/c1/emailIntegration/status').set({ microsoftExchange: { approvedSharedMailboxes: ['billing@example.com'] } });
   const urls = [];
   const provider = createMicrosoftProvider({ ...config(db), fetchImpl: async url => { urls.push(url); return response(202); } });
   await provider.send('c1', { to: ['to@example.com'], subject: 'Invoice', text: 'Attached' }, { email: 'billing@example.com' });
@@ -53,7 +53,7 @@ test('Graph message maps recipients, HTML and file attachments', () => {
 test('Graph routing uses /me for the connected mailbox and reports throttling', async () => {
   const db = new Db();
   await db.doc('companies/c1/privateEmailTokens/microsoft_exchange').set({ refreshToken: 'r', accessToken: 'token', accessTokenExpiresAt: new Date(2_000_000), accountEmail: 'user@example.com', tenantId: 'tenant-a' });
-  await db.doc('companies/c1').set({});
+  await db.doc('companies/c1/emailIntegration/status').set({});
   let called;
   const provider = createMicrosoftProvider({ ...config(db), fetchImpl: async url => { called = url; return response(429, { error: { code: 'TooManyRequests' } }, { 'retry-after': '10' }); } });
   await assert.rejects(provider.send('c1', { to: ['to@example.com'] }, 'USER@example.com'), error => error.message === 'graph_throttled' && error.retryAfter === '10');

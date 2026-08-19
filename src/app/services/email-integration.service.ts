@@ -1,10 +1,11 @@
 import { inject, Injectable } from '@angular/core';
 import { doc, docData, Firestore, serverTimestamp, setDoc } from '@angular/fire/firestore';
-import { map, Observable } from 'rxjs';
+import { combineLatest, map, Observable } from 'rxjs';
 import { Functions, httpsCallable } from '@angular/fire/functions';
 import { ActivityService } from './activity.service';
 import {
   CompanyEmailSettings,
+  CompanyEmailPreferences,
   DEFAULT_EMAIL_SETTINGS,
   EmailProvider,
   EMAIL_PROVIDER_LABELS,
@@ -43,24 +44,32 @@ export class EmailIntegrationService {
   }
 
   getCompanySettings(companyId: string): Observable<CompanyEmailSettings> {
-    return docData(doc(this.db, `companies/${companyId}`)).pipe(
-      map((company: any) => this.normalizeCompanySettings(companyId, company?.emailIntegrations))
+    const base = `companies/${companyId}/emailIntegration`;
+    return combineLatest([
+      docData(doc(this.db, `${base}/preferences`)),
+      docData(doc(this.db, `${base}/status`)),
+    ]).pipe(
+      map(([preferences, status]) => this.normalizeCompanySettings(companyId, {
+        ...(preferences as object), ...(status as object),
+        nexusFallback: {
+          ...(status as any)?.nexusFallback,
+          ...(preferences as any)?.nexusFallback,
+        },
+      }))
     );
   }
 
-  async saveCompanySettings(companyId: string, settings: Partial<CompanyEmailSettings>): Promise<void> {
+  async saveCompanySettings(companyId: string, settings: Omit<CompanyEmailPreferences, 'companyId' | 'updatedAt'>): Promise<void> {
     await this.activityService.track(
       companyId,
       'update',
-      `companies/${companyId}`,
+      `companies/${companyId}/emailIntegration/preferences`,
       'Updated company email integration settings.',
-      () => setDoc(doc(this.db, `companies/${companyId}`), {
-        emailIntegrations: {
-          ...settings,
-          companyId,
-          updatedAt: serverTimestamp(),
-        },
-      }, { merge: true })
+      () => setDoc(doc(this.db, `companies/${companyId}/emailIntegration/preferences`), {
+        ...settings,
+        companyId,
+        updatedAt: serverTimestamp(),
+      })
     );
   }
 

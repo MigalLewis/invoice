@@ -55,6 +55,16 @@ export interface CompanyEmailSettings {
   updatedAt?: any;
 }
 
+export type CompanyEmailPreferences = Pick<CompanyEmailSettings,
+  'companyId' | 'defaultProvider' | 'onboardingCompleted' | 'selectedSender' | 'updatedAt'> & {
+  nexusFallback?: Pick<NexusManagedFallbackProvider, 'enabled' | 'replyToEmail'>;
+};
+
+export type CompanyEmailConnectionStatus = Pick<CompanyEmailSettings,
+  'gmail' | 'microsoftExchange' | 'sendgrid'> & {
+  nexusFallback?: Omit<NexusManagedFallbackProvider, 'enabled' | 'replyToEmail'>;
+};
+
 export const EMAIL_PROVIDER_LABELS: Record<EmailProvider, string> = {
   gmail: 'Google Workspace Gmail',
   microsoft_exchange: 'Microsoft 365 Exchange',

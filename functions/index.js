@@ -357,6 +357,20 @@ async function validateCompanySendGridCredential(credentials) {
   return { senderVerified, domainVerified };
 }
 
+async function companyEmailIntegrations(companyId) {
+  const [preferences, status] = await Promise.all([
+    admin.firestore().doc(`companies/${companyId}/emailIntegration/preferences`).get(),
+    admin.firestore().doc(`companies/${companyId}/emailIntegration/status`).get(),
+  ]);
+  const preferenceData = preferences.exists ? preferences.data() : {};
+  const statusData = status.exists ? status.data() : {};
+  return {
+    ...preferenceData,
+    ...statusData,
+    nexusFallback: { ...statusData.nexusFallback, ...preferenceData.nexusFallback },
+  };
+}
+
 const microsoftEmailSecrets = [microsoftEmailClientId, microsoftEmailClientSecret, microsoftEmailRedirectUri, microsoftEmailAllowedTenants];
 
 exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail, companySendGridCredentials, gmailClientId, gmailClientSecret, gmailRedirectUri, ...microsoftEmailSecrets] }, async request => {
@@ -366,7 +380,7 @@ exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail
   if (errors.length) throw new HttpsError('invalid-argument', errors.join('; '));
   const companySnap = await assertCompanyMember(request.auth.uid, data.companyId);
   const company = companySnap.data() || {};
-  const integrations = company.emailIntegrations || {};
+  const integrations = await companyEmailIntegrations(data.companyId);
   if (integrations.onboardingCompleted !== true) {
     throw new HttpsError('failed-precondition', 'Choose and save an email provider in company settings before sending.');
   }
@@ -421,14 +435,16 @@ exports.verifyCompanySendGrid = onCall({ secrets: [companySendGridCredentials] }
   await assertCompanyMember(request.auth.uid, companyId);
   const credentials = companySendGridCredential(companyId);
   const validation = await validateCompanySendGridCredential(credentials);
-  const publicState = {
+  const privateState = {
     mode: 'company_owned_sendgrid', connected: true, apiKeyConfigured: true,
     credentialReference: `COMPANY_SENDGRID_CREDENTIALS:${companyId}`,
     fromEmail: credentials.fromEmail, fromName: validatedDisplayName(credentials.fromName),
     fromNameValidated: !!validatedDisplayName(credentials.fromName), ...validation,
     connectionTestedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
-  await admin.firestore().doc(`companies/${companyId}`).set({ emailIntegrations: { sendgrid: publicState } }, { merge: true });
+  const publicState = { mode: 'company_owned_sendgrid', connected: true, apiKeyConfigured: true };
+  await admin.firestore().doc(`companies/${companyId}/privateEmailTokens/company_sendgrid`).set(privateState, { merge: true });
+  await admin.firestore().doc(`companies/${companyId}/emailIntegration/status`).set({ sendgrid: publicState }, { merge: true });
   return publicState;
 });
 

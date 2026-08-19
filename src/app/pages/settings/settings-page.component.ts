@@ -231,10 +231,7 @@ export class SettingsPageComponent {
         defaultProvider: value.defaultProvider,
         onboardingCompleted: true,
         selectedSender: emailSenderFor(value.defaultProvider, value),
-        gmail: { connected: !!this.emailSettings()?.gmail?.connected, accountEmail: value.gmailAccountEmail || undefined },
-        microsoftExchange: { connected: !!this.emailSettings()?.microsoftExchange?.connected, accountEmail: value.exchangeAccountEmail || undefined, tenantId: value.exchangeTenantId || undefined },
-        sendgrid: { mode: 'company_owned_sendgrid', ...this.emailSettings()?.sendgrid, connected: !!this.emailSettings()?.sendgrid?.connected },
-        nexusFallback: { mode: 'nexus_managed_fallback', enabled: value.nexusFallbackEnabled, configured: this.nexusFallbackConfigured(), replyToEmail: value.nexusReplyToEmail || undefined, effectiveFromEmail: this.nexusFromEmail() || undefined }
+        nexusFallback: { enabled: value.nexusFallbackEnabled, replyToEmail: value.nexusReplyToEmail || undefined }
       });
       this.message.set('Email integration settings saved. Complete provider authorization in the backend connection flow before sending mail.');
     } finally {
