@@ -16,20 +16,22 @@ export class EmailIntegrationService {
   private readonly activityService = inject(ActivityService);
   private readonly functions = inject(Functions, { optional: true });
 
-  async providerConfiguration(): Promise<{ gmail: boolean }> {
-    if (!this.functions) return { gmail: false };
-    return (await httpsCallable<void, { gmail: boolean }>(this.functions, 'getEmailProviderConfiguration')()).data;
+  async providerConfiguration(): Promise<{ gmail: boolean; microsoftExchange: boolean; microsoftTenantPolicy?: string }> {
+    if (!this.functions) return { gmail: false, microsoftExchange: false };
+    return (await httpsCallable<void, { gmail: boolean; microsoftExchange: boolean; microsoftTenantPolicy?: string }>(this.functions, 'getEmailProviderConfiguration')()).data;
   }
 
-  async connectEmailProvider(provider: 'gmail', companyId: string, accountEmail?: string): Promise<string> {
+  async connectEmailProvider(provider: 'gmail' | 'microsoft_exchange', companyId: string, accountEmail?: string): Promise<string> {
     if (!this.functions) throw new Error('Firebase Functions is not configured.');
-    const result = await httpsCallable<{ companyId: string; accountEmail?: string }, { url: string }>(this.functions, 'startGmailOAuth')({ companyId, accountEmail: accountEmail || undefined });
+    const endpoint = provider === 'gmail' ? 'startGmailOAuth' : 'startMicrosoftEmailOAuth';
+    const result = await httpsCallable<{ companyId: string; accountEmail?: string }, { url: string }>(this.functions, endpoint)({ companyId, accountEmail: accountEmail || undefined });
     return result.data.url;
   }
 
-  async disconnectEmailProvider(provider: 'gmail', companyId: string): Promise<void> {
+  async disconnectEmailProvider(provider: 'gmail' | 'microsoft_exchange', companyId: string): Promise<void> {
     if (!this.functions) throw new Error('Firebase Functions is not configured.');
-    await httpsCallable<{ companyId: string }, { connected: boolean }>(this.functions, 'disconnectGmail')({ companyId });
+    const endpoint = provider === 'gmail' ? 'disconnectGmail' : 'disconnectMicrosoftEmail';
+    await httpsCallable<{ companyId: string }, { connected: boolean }>(this.functions, endpoint)({ companyId });
   }
 
   getCompanySettings(companyId: string): Observable<CompanyEmailSettings> {

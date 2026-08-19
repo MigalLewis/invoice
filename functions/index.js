@@ -4,6 +4,7 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 const { randomUUID } = require('crypto');
 const { createGmailProvider } = require('./email/providers/gmail');
+const { createMicrosoftProvider } = require('./email/providers/microsoft');
 
 admin.initializeApp();
 
@@ -14,6 +15,12 @@ const sendGridFromEmail = defineSecret('SENDGRID_FROM_EMAIL');
 const gmailClientId = defineSecret('GMAIL_OAUTH_CLIENT_ID');
 const gmailClientSecret = defineSecret('GMAIL_OAUTH_CLIENT_SECRET');
 const gmailRedirectUri = defineSecret('GMAIL_OAUTH_REDIRECT_URI');
+const microsoftEmailClientId = defineSecret('MICROSOFT_EMAIL_OAUTH_CLIENT_ID');
+const microsoftEmailClientSecret = defineSecret('MICROSOFT_EMAIL_OAUTH_CLIENT_SECRET');
+const microsoftEmailRedirectUri = defineSecret('MICROSOFT_EMAIL_OAUTH_REDIRECT_URI');
+// Comma-separated Entra tenant IDs. Microsoft email OAuth is deliberately
+// unavailable until an explicit single-tenant or tenant allow-list policy exists.
+const microsoftEmailAllowedTenants = defineSecret('MICROSOFT_EMAIL_ALLOWED_TENANTS');
 
 function gmailProvider() {
   return createGmailProvider({
@@ -21,6 +28,14 @@ function gmailProvider() {
     clientId: () => gmailClientId.value(),
     clientSecret: () => gmailClientSecret.value(),
     redirectUri: () => gmailRedirectUri.value(),
+  });
+}
+
+function microsoftEmailProvider() {
+  return createMicrosoftProvider({
+    db: admin.firestore(), clientId: () => microsoftEmailClientId.value(),
+    clientSecret: () => microsoftEmailClientSecret.value(), redirectUri: () => microsoftEmailRedirectUri.value(),
+    allowedTenants: () => microsoftEmailAllowedTenants.value(),
   });
 }
 
@@ -226,7 +241,9 @@ async function sendWithSendGrid(data) {
   return response.headers.get('x-message-id') || `sendgrid-${Date.now()}`;
 }
 
-exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail, gmailClientId, gmailClientSecret, gmailRedirectUri] }, async request => {
+const microsoftEmailSecrets = [microsoftEmailClientId, microsoftEmailClientSecret, microsoftEmailRedirectUri, microsoftEmailAllowedTenants];
+
+exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail, gmailClientId, gmailClientSecret, gmailRedirectUri, ...microsoftEmailSecrets] }, async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required to send email.');
   const data = request.data || {};
   const errors = validatePayload(data);
@@ -245,6 +262,17 @@ exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail
     } catch (error) {
       throw new HttpsError(error.message === 'not_connected' ? 'failed-precondition' : 'internal', `Gmail send failed: ${error.message}`);
     }
+  } else if (provider === 'microsoft_exchange') {
+    const content = await buildEmailContent(data);
+    const attachment = await resolveEmailAttachment(data);
+    const text = content.find(item => item.type === 'text/plain')?.value || '';
+    const html = content.find(item => item.type === 'text/html')?.value;
+    try {
+      messageId = await microsoftEmailProvider().send(data.companyId, { to: [data.recipient], cc: normalizeEmailList(data.cc), bcc: normalizeEmailList(data.bcc), subject: data.subject, text, html, attachments: [attachment] }, company.emailIntegrations?.selectedSender);
+    } catch (error) {
+      const expected = ['not_connected', 'expired_consent', 'tenant_not_allowed', 'sender_not_authorized'];
+      throw new HttpsError(expected.includes(error.message) ? 'failed-precondition' : error.message === 'graph_throttled' ? 'resource-exhausted' : 'internal', `Microsoft Graph send failed: ${error.message}`);
+    }
   } else if (provider === 'sendgrid') {
     messageId = await sendWithSendGrid(data);
   } else {
@@ -255,9 +283,9 @@ exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail
 
 const gmailSecrets = [gmailClientId, gmailClientSecret, gmailRedirectUri];
 
-exports.getEmailProviderConfiguration = onCall({ secrets: gmailSecrets }, async request => {
+exports.getEmailProviderConfiguration = onCall({ secrets: [...gmailSecrets, ...microsoftEmailSecrets] }, async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required.');
-  return { gmail: gmailProvider().configured() };
+  return { gmail: gmailProvider().configured(), microsoftExchange: microsoftEmailProvider().configured(), microsoftTenantPolicy: microsoftEmailProvider().tenantPolicy().mode };
 });
 
 exports.startGmailOAuth = onCall({ secrets: gmailSecrets }, async request => {
@@ -294,6 +322,44 @@ exports.disconnectGmail = onCall({ secrets: gmailSecrets }, async request => {
   const { companyId } = request.data || {};
   await assertCompanyMember(request.auth.uid, companyId);
   return gmailProvider().disconnect(companyId);
+});
+
+exports.startMicrosoftEmailOAuth = onCall({ secrets: microsoftEmailSecrets }, async request => {
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  const { companyId, accountEmail } = request.data || {};
+  if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+  await assertCompanyMember(request.auth.uid, companyId);
+  try { return { url: await microsoftEmailProvider().start({ uid: request.auth.uid, companyId, loginHint: accountEmail }) }; }
+  catch (error) { throw new HttpsError('failed-precondition', error.message); }
+});
+
+exports.microsoftEmailOAuthCallback = onRequest({ secrets: microsoftEmailSecrets }, async (request, response) => {
+  try {
+    const result = await microsoftEmailProvider().callback({ state: String(request.query.state || ''), code: String(request.query.code || '') });
+    response.redirect(302, `/settings?emailOAuth=microsoft_exchange&result=success&companyId=${encodeURIComponent(result.companyId)}`);
+  } catch (error) { response.redirect(302, `/settings?emailOAuth=microsoft_exchange&result=error&reason=${encodeURIComponent(error.message)}`); }
+});
+
+exports.refreshMicrosoftEmailConnection = onCall({ secrets: microsoftEmailSecrets }, async request => {
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  const { companyId } = request.data || {};
+  await assertCompanyMember(request.auth.uid, companyId);
+  const auth = await microsoftEmailProvider().refresh(companyId);
+  return { connected: true, accountEmail: auth.accountEmail, tenantId: auth.tenantId };
+});
+
+exports.checkMicrosoftEmailConnection = onCall({ secrets: microsoftEmailSecrets }, async request => {
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  const { companyId } = request.data || {};
+  await assertCompanyMember(request.auth.uid, companyId);
+  return microsoftEmailProvider().health(companyId);
+});
+
+exports.disconnectMicrosoftEmail = onCall({ secrets: microsoftEmailSecrets }, async request => {
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  const { companyId } = request.data || {};
+  await assertCompanyMember(request.auth.uid, companyId);
+  return microsoftEmailProvider().disconnect(companyId);
 });
 
 
