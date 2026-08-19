@@ -79,6 +79,61 @@ const { _test } = require('./index.js');
   assert.strictEqual(_test.isCompanyMember('u1', 'co1', 'co2', ['u1']), true);
   assert.strictEqual(_test.isCompanyMember('u1', 'co1', 'co2', ['u2']), false);
 
+  function attachmentBucket({ bytes = Buffer.from('PDF'), contentType = 'application/pdf', size = bytes.length, metadataError } = {}) {
+    let downloads = 0;
+    return {
+      get downloads() { return downloads; },
+      file() {
+        return {
+          async getMetadata() {
+            if (metadataError) throw metadataError;
+            return [{ contentType, size: String(size) }];
+          },
+          async download() { downloads += 1; return [bytes]; },
+        };
+      },
+    };
+  }
+
+  const validBucket = attachmentBucket();
+  const validAttachment = await _test.resolveEmailAttachment({
+    companyId: 'co', attachment: { storagePath: 'companies/co/generated/invoices/INV-1.pdf', fileName: 'Invoice 1.pdf' }
+  }, validBucket);
+  assert.deepStrictEqual(validAttachment, {
+    filename: 'Invoice 1.pdf', type: 'application/pdf', disposition: 'attachment', content: Buffer.from('PDF').toString('base64')
+  });
+  assert.strictEqual(validBucket.downloads, 1);
+  const sendGridPayload = _test.buildSendGridPayload({
+    companyId: 'co', clientId: 'client', documentType: 'invoice', documentId: 'INV-1', recipient: 'client@example.com',
+    subject: 'Invoice', attachment: { storagePath: 'companies/co/generated/invoices/INV-1.pdf' }
+  }, 'billing@example.com', [{ type: 'text/plain', value: 'Attached' }], validAttachment);
+  assert.deepStrictEqual(sendGridPayload.attachments, [validAttachment]);
+
+  await assert.rejects(
+    _test.resolveEmailAttachment({ companyId: 'co', attachment: { storagePath: 'companies/co/generated/missing.pdf' } }, attachmentBucket({ metadataError: { code: 404 } })),
+    error => error.code === 'not-found'
+  );
+  await assert.rejects(
+    _test.resolveEmailAttachment({ companyId: 'co', attachment: { storagePath: 'companies/other/generated/INV-1.pdf' } }, attachmentBucket()),
+    error => error.code === 'invalid-argument' && /under companies\/co\/generated\//.test(error.message)
+  );
+  const oversizedBucket = attachmentBucket({ size: _test.MAX_ATTACHMENT_BYTES + 1 });
+  await assert.rejects(
+    _test.resolveEmailAttachment({ companyId: 'co', attachment: { storagePath: 'companies/co/generated/large.pdf' } }, oversizedBucket),
+    error => error.code === 'invalid-argument' && /size limit/.test(error.message)
+  );
+  assert.strictEqual(oversizedBucket.downloads, 0);
+  await assert.rejects(
+    _test.resolveEmailAttachment({ companyId: 'co', attachment: { storagePath: 'companies/co/generated/file.exe' } }, attachmentBucket({ contentType: 'application/octet-stream' })),
+    error => error.code === 'invalid-argument' && /MIME type/.test(error.message)
+  );
+  assert(_test.validatePayload({ attachment: { generatedDocumentPayloadRef: 'generatedPayloads/payload-1' } })
+    .includes('attachment.generatedDocumentPayloadRef is not supported; provide attachment.storagePath'));
+  await assert.rejects(
+    _test.resolveEmailAttachment({ companyId: 'co', attachment: { generatedDocumentPayloadRef: 'generatedPayloads/payload-1' } }, attachmentBucket()),
+    error => error.code === 'invalid-argument' && /not supported/.test(error.message)
+  );
+
 
   assert.deepStrictEqual(_test.validatePdfAnalysisRequest({
     companyId: 'co', templateId: 'invoice-123', sourcePdfPath: 'companies/co/pdf-templates/invoice-123/source.pdf'

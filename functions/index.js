@@ -10,6 +10,15 @@ const sendGridApiKey = defineSecret('SENDGRID_API_KEY');
 const sendGridFromEmail = defineSecret('SENDGRID_FROM_EMAIL');
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// SendGrid limits the complete message (including base64 expansion) to 30 MB.
+// Keeping source documents at or below 20 MiB leaves room for that expansion
+// and for the rest of the MIME message.
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
 
 function normalizeEmailList(value) {
   if (Array.isArray(value)) return value.map(String).map(v => v.trim()).filter(Boolean);
@@ -29,10 +38,61 @@ function validatePayload(data) {
   if (!String(data.subject || '').trim()) errors.push('subject is required');
   if (!String(data.messageBody || '').trim() && data.templateSelection?.kind !== 'designed') errors.push('messageBody is required');
   if (data.templateSelection?.kind === 'designed' && !String(data.templateSelection.templateId || '').trim()) errors.push('templateSelection.templateId is required');
-  if (!data.attachment?.storagePath && !data.attachment?.generatedDocumentPayloadRef) {
-    errors.push('attachment.storagePath or attachment.generatedDocumentPayloadRef is required');
-  }
+  if (data.attachment?.generatedDocumentPayloadRef) errors.push('attachment.generatedDocumentPayloadRef is not supported; provide attachment.storagePath');
+  if (!data.attachment?.storagePath) errors.push('attachment.storagePath is required');
   return errors;
+}
+
+function validateAttachmentPath(companyId, storagePath) {
+  const company = String(companyId || '');
+  const path = String(storagePath || '');
+  const prefix = `companies/${company}/generated/`;
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(company) || !path.startsWith(prefix)) {
+    throw new HttpsError('invalid-argument', `Attachment must be stored under ${prefix}`);
+  }
+  const relativePath = path.slice(prefix.length);
+  if (!relativePath || path.includes('\\') || path.includes('//') || relativePath.split('/').some(part => !part || part === '.' || part === '..')) {
+    throw new HttpsError('invalid-argument', 'Attachment storage path is not canonical.');
+  }
+  return path;
+}
+
+function validatedAttachmentFilename(requestedName, storagePath) {
+  const name = String(requestedName || storagePath.split('/').pop() || '');
+  if (!/^[A-Za-z0-9][A-Za-z0-9._ -]{0,254}$/.test(name) || name === '.' || name === '..') {
+    throw new HttpsError('invalid-argument', 'Attachment filename is invalid.');
+  }
+  return name;
+}
+
+async function resolveEmailAttachment(data, bucket = admin.storage().bucket()) {
+  const attachment = data.attachment || {};
+  if (attachment.generatedDocumentPayloadRef) {
+    throw new HttpsError('invalid-argument', 'attachment.generatedDocumentPayloadRef is not supported; generated documents must first be stored in company-scoped Storage.');
+  }
+  const storagePath = validateAttachmentPath(data.companyId, attachment.storagePath);
+  const file = bucket.file(storagePath);
+  let metadata;
+  try {
+    [metadata] = await file.getMetadata();
+  } catch (error) {
+    if (error?.code === 404 || error?.code === '404') throw new HttpsError('not-found', 'Attachment was not found.');
+    throw error;
+  }
+  const type = String(metadata.contentType || '').toLowerCase();
+  if (!ALLOWED_ATTACHMENT_TYPES.has(type)) throw new HttpsError('invalid-argument', 'Attachment MIME type is not allowed.');
+  const declaredSize = Number(metadata.size);
+  if (!Number.isSafeInteger(declaredSize) || declaredSize < 0) throw new HttpsError('failed-precondition', 'Attachment size metadata is invalid.');
+  if (declaredSize > MAX_ATTACHMENT_BYTES) throw new HttpsError('invalid-argument', 'Attachment exceeds the email provider size limit.');
+  const [bytes] = await file.download();
+  if (!Buffer.isBuffer(bytes) || bytes.length !== declaredSize) throw new HttpsError('failed-precondition', 'Attachment size does not match its Storage metadata.');
+  if (bytes.length > MAX_ATTACHMENT_BYTES) throw new HttpsError('invalid-argument', 'Attachment exceeds the email provider size limit.');
+  return {
+    filename: validatedAttachmentFilename(attachment.fileName, storagePath),
+    type,
+    disposition: 'attachment',
+    content: bytes.toString('base64'),
+  };
 }
 
 function isCompanyMember(uid, companyId, userCompanyId, users = []) {
@@ -100,6 +160,27 @@ async function buildEmailContent(data) {
     : [{ type: 'text/plain', value: data.messageBody }];
 }
 
+function buildSendGridPayload(data, fromEmail, content, attachment) {
+  return {
+    personalizations: [{
+      to: [{ email: data.recipient }],
+      cc: normalizeEmailList(data.cc).map(email => ({ email })),
+      bcc: normalizeEmailList(data.bcc).map(email => ({ email })),
+    }],
+    from: { email: fromEmail },
+    subject: data.subject,
+    content,
+    attachments: [attachment],
+    custom_args: {
+      companyId: data.companyId,
+      clientId: data.clientId,
+      documentType: data.documentType,
+      documentId: data.documentId,
+      storagePath: data.attachment.storagePath,
+    },
+  };
+}
+
 async function sendWithSendGrid(data) {
   const apiKey = sendGridApiKey.value();
   const fromEmail = sendGridFromEmail.value();
@@ -108,6 +189,7 @@ async function sendWithSendGrid(data) {
   }
 
   const content = await buildEmailContent(data);
+  const attachment = await resolveEmailAttachment(data);
 
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
@@ -115,24 +197,7 @@ async function sendWithSendGrid(data) {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      personalizations: [{
-        to: [{ email: data.recipient }],
-        cc: normalizeEmailList(data.cc).map(email => ({ email })),
-        bcc: normalizeEmailList(data.bcc).map(email => ({ email })),
-      }],
-      from: { email: fromEmail },
-      subject: data.subject,
-      content,
-      custom_args: {
-        companyId: data.companyId,
-        clientId: data.clientId,
-        documentType: data.documentType,
-        documentId: data.documentId,
-        storagePath: data.attachment?.storagePath || '',
-        generatedDocumentPayloadRef: data.attachment?.generatedDocumentPayloadRef || '',
-      },
-    }),
+    body: JSON.stringify(buildSendGridPayload(data, fromEmail, content, attachment)),
   });
 
   if (!response.ok) {
@@ -647,4 +712,4 @@ exports.generatePdfDocument = onCall({ memory: '1GiB', timeoutSeconds: 120 }, as
   }
 });
 
-module.exports._test = { validatePayload, renderFreeMarkerTemplate, renderDocumentTemplate, buildTemplateVariables, formatPhoneNumber, htmlToText, normalizeEmailList, buildEmailContent, isCompanyMember, validatePdfAnalysisRequest, buildPdfMapping, validatePdfVariables, generatedPdfMetadata, validatePdfGenerationRequest, sanitizePathSegment, minimalPdfBuffer, firebaseStorageDownloadUrl };
+module.exports._test = { validatePayload, validateAttachmentPath, validatedAttachmentFilename, resolveEmailAttachment, buildSendGridPayload, MAX_ATTACHMENT_BYTES, renderFreeMarkerTemplate, renderDocumentTemplate, buildTemplateVariables, formatPhoneNumber, htmlToText, normalizeEmailList, buildEmailContent, isCompanyMember, validatePdfAnalysisRequest, buildPdfMapping, validatePdfVariables, generatedPdfMetadata, validatePdfGenerationRequest, sanitizePathSegment, minimalPdfBuffer, firebaseStorageDownloadUrl };
