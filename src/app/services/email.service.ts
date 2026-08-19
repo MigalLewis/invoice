@@ -70,7 +70,7 @@ export interface SendEmailResponse {
   sendRecordId?: string;
   messageId: string;
   accepted: boolean;
-  status?: 'pending' | 'accepted' | 'delivered' | 'failed' | 'bounced';
+  status?: 'pending' | 'sent' | 'accepted' | 'deferred' | 'delivered' | 'dropped' | 'bounced' | 'complained' | 'unsubscribed' | 'failed';
   sentAt?: string;
 }
 
