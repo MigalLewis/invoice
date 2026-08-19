@@ -104,6 +104,7 @@ export interface Company {
   signatureUrl?: string;
   signaturePath?: string;
   signature?: { name?: string; path?: string; imageUrl?: string; url?: string; updatedAt?: number };
+  brandColors?: CompanyTemplateTheme;
   users: string[];             
   createdAt: number;
   storageProvider?: 'local';
