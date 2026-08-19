@@ -12,9 +12,12 @@ function providerIsUsable(provider, integrations, configuration = {}) {
   if (provider === 'gmail') return integrations.gmail?.connected === true && configuration.gmail !== false;
   if (provider === 'microsoft_exchange') return integrations.microsoftExchange?.connected === true && configuration.microsoftExchange !== false;
   if (provider === 'company_sendgrid') {
-    return integrations.sendgrid?.connected === true && integrations.sendgrid?.apiKeyConfigured === true;
+    return integrations.sendgrid?.mode === 'company_owned_sendgrid' && integrations.sendgrid?.connected === true &&
+      integrations.sendgrid?.apiKeyConfigured === true &&
+      (integrations.sendgrid?.senderVerified === true || integrations.sendgrid?.domainVerified === true);
   }
-  return provider === 'nexus_fallback' && integrations.nexusFallback?.enabled === true && configuration.nexusFallback !== false;
+  return provider === 'nexus_fallback' && integrations.nexusFallback?.mode === 'nexus_managed_fallback' &&
+    integrations.nexusFallback?.enabled === true && configuration.nexusFallback !== false;
 }
 
 function resolveRoute(requestedProvider, integrations = {}, configuration = {}) {

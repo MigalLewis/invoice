@@ -34,6 +34,14 @@ export class EmailIntegrationService {
     await httpsCallable<{ companyId: string }, { connected: boolean }>(this.functions, endpoint)({ companyId });
   }
 
+  async verifyCompanySendGrid(companyId: string): Promise<CompanyEmailSettings['sendgrid']> {
+    if (!this.functions) throw new Error('Firebase Functions is not configured.');
+    const result = await httpsCallable<{ companyId: string }, NonNullable<CompanyEmailSettings['sendgrid']>>(
+      this.functions, 'verifyCompanySendGrid'
+    )({ companyId });
+    return result.data;
+  }
+
   getCompanySettings(companyId: string): Observable<CompanyEmailSettings> {
     return docData(doc(this.db, `companies/${companyId}`)).pipe(
       map((company: any) => this.normalizeCompanySettings(companyId, company?.emailIntegrations))
@@ -77,8 +85,8 @@ export class EmailIntegrationService {
       defaultProvider,
       gmail: { connected: false, ...settings?.gmail },
       microsoftExchange: { connected: false, ...settings?.microsoftExchange },
-      sendgrid: { connected: false, apiKeyConfigured: false, ...settings?.sendgrid },
-      nexusFallback: { enabled: false, configured: false, ...settings?.nexusFallback },
+      sendgrid: { mode: 'company_owned_sendgrid', connected: false, apiKeyConfigured: false, ...settings?.sendgrid },
+      nexusFallback: { mode: 'nexus_managed_fallback', enabled: false, configured: false, ...settings?.nexusFallback },
     };
   }
 }
