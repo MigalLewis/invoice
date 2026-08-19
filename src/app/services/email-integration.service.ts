@@ -16,9 +16,9 @@ export class EmailIntegrationService {
   private readonly activityService = inject(ActivityService);
   private readonly functions = inject(Functions, { optional: true });
 
-  async providerConfiguration(): Promise<{ gmail: boolean; microsoftExchange: boolean; microsoftTenantPolicy?: string }> {
-    if (!this.functions) return { gmail: false, microsoftExchange: false };
-    return (await httpsCallable<void, { gmail: boolean; microsoftExchange: boolean; microsoftTenantPolicy?: string }>(this.functions, 'getEmailProviderConfiguration')()).data;
+  async providerConfiguration(): Promise<{ gmail: boolean; microsoftExchange: boolean; nexusFallback: boolean; microsoftTenantPolicy?: string }> {
+    if (!this.functions) return { gmail: false, microsoftExchange: false, nexusFallback: false };
+    return (await httpsCallable<void, { gmail: boolean; microsoftExchange: boolean; nexusFallback: boolean; microsoftTenantPolicy?: string }>(this.functions, 'getEmailProviderConfiguration')()).data;
   }
 
   async connectEmailProvider(provider: 'gmail' | 'microsoft_exchange', companyId: string, accountEmail?: string): Promise<string> {
@@ -63,11 +63,13 @@ export class EmailIntegrationService {
   connectionStatus(settings: CompanyEmailSettings, provider: EmailProvider): 'connected' | 'needs_configuration' {
     if (provider === 'gmail') return settings.gmail?.connected ? 'connected' : 'needs_configuration';
     if (provider === 'microsoft_exchange') return settings.microsoftExchange?.connected ? 'connected' : 'needs_configuration';
-    return settings.sendgrid?.connected && settings.sendgrid?.apiKeyConfigured ? 'connected' : 'needs_configuration';
+    if (provider === 'company_sendgrid') return settings.sendgrid?.connected && settings.sendgrid?.apiKeyConfigured ? 'connected' : 'needs_configuration';
+    return settings.nexusFallback?.enabled && settings.nexusFallback?.configured ? 'connected' : 'needs_configuration';
   }
 
   private normalizeCompanySettings(companyId: string, settings?: Partial<CompanyEmailSettings>): CompanyEmailSettings {
-    const defaultProvider = settings?.defaultProvider ?? DEFAULT_EMAIL_SETTINGS.defaultProvider;
+    const storedDefault = settings?.defaultProvider as EmailProvider | 'sendgrid' | undefined;
+    const defaultProvider: EmailProvider = storedDefault === 'sendgrid' ? 'company_sendgrid' : storedDefault ?? DEFAULT_EMAIL_SETTINGS.defaultProvider;
     return {
       companyId,
       ...DEFAULT_EMAIL_SETTINGS,
@@ -76,6 +78,7 @@ export class EmailIntegrationService {
       gmail: { connected: false, ...settings?.gmail },
       microsoftExchange: { connected: false, ...settings?.microsoftExchange },
       sendgrid: { connected: false, apiKeyConfigured: false, ...settings?.sendgrid },
+      nexusFallback: { enabled: false, configured: false, ...settings?.nexusFallback },
     };
   }
 }

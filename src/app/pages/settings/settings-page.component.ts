@@ -60,6 +60,7 @@ export class SettingsPageComponent {
   readonly emailSettings = signal<CompanyEmailSettings | null>(null);
   readonly gmailConfigured = signal(false);
   readonly microsoftExchangeConfigured = signal(false);
+  readonly nexusFallbackConfigured = signal(false);
   readonly logoUrl = signal('');
   readonly signatureUrl = signal('');
   readonly signerName = signal('');
@@ -81,8 +82,8 @@ export class SettingsPageComponent {
     googleDriveFolder: [''], googleDriveFolderId: [''], oneDriveFolder: [''], oneDriveFolderId: [''], localFolderPath: ['']
   });
   readonly emailForm = this.fb.nonNullable.group({
-    defaultProvider: ['gmail' as EmailProvider], gmailAccountEmail: [''], exchangeAccountEmail: [''],
-    exchangeTenantId: [''], sendgridFromEmail: [''], sendgridFromName: ['']
+    defaultProvider: ['nexus_fallback' as EmailProvider], gmailAccountEmail: [''], exchangeAccountEmail: [''],
+    exchangeTenantId: [''], sendgridFromEmail: [''], sendgridFromName: [''], nexusFallbackEnabled: [false]
   });
 
   constructor() {
@@ -220,7 +221,8 @@ export class SettingsPageComponent {
         selectedSender: emailSenderFor(value.defaultProvider, value),
         gmail: { connected: !!this.emailSettings()?.gmail?.connected, accountEmail: value.gmailAccountEmail || undefined },
         microsoftExchange: { connected: !!this.emailSettings()?.microsoftExchange?.connected, accountEmail: value.exchangeAccountEmail || undefined, tenantId: value.exchangeTenantId || undefined },
-        sendgrid: { connected: !!this.emailSettings()?.sendgrid?.connected, apiKeyConfigured: !!this.emailSettings()?.sendgrid?.apiKeyConfigured, fromEmail: value.sendgridFromEmail || undefined, fromName: value.sendgridFromName || undefined }
+        sendgrid: { connected: !!this.emailSettings()?.sendgrid?.connected, apiKeyConfigured: !!this.emailSettings()?.sendgrid?.apiKeyConfigured, fromEmail: value.sendgridFromEmail || undefined, fromName: value.sendgridFromName || undefined },
+        nexusFallback: { enabled: value.nexusFallbackEnabled, configured: this.nexusFallbackConfigured() }
       });
       this.message.set('Email integration settings saved. Complete provider authorization in the backend connection flow before sending mail.');
     } finally {
@@ -288,6 +290,7 @@ export class SettingsPageComponent {
       this.emailService.providerConfiguration().then(configuration => {
         this.gmailConfigured.set(configuration.gmail);
         this.microsoftExchangeConfigured.set(configuration.microsoftExchange);
+        this.nexusFallbackConfigured.set(configuration.nexusFallback);
       }).catch(() => { this.gmailConfigured.set(false); this.microsoftExchangeConfigured.set(false); });
       this.loadCompany();
       this.storageService.getCompanySettings(companyId).pipe(take(1)).subscribe(settings => {
@@ -310,7 +313,8 @@ export class SettingsPageComponent {
           exchangeAccountEmail: settings.microsoftExchange?.accountEmail || '',
           exchangeTenantId: settings.microsoftExchange?.tenantId || '',
           sendgridFromEmail: settings.sendgrid?.fromEmail || '',
-          sendgridFromName: settings.sendgrid?.fromName || ''
+          sendgridFromName: settings.sendgrid?.fromName || '',
+          nexusFallbackEnabled: settings.nexusFallback?.enabled || false
         });
       });
     });
