@@ -6,7 +6,7 @@ const { randomUUID, createHash } = require('crypto');
 const { createGmailProvider } = require('./email/providers/gmail');
 const { createMicrosoftProvider } = require('./email/providers/microsoft');
 const { dispatchEmail, resolveRoute } = require('./email/dispatcher');
-const { createSendCoordinator, recordIdFor } = require('./email/send-coordinator');
+const { createSendCoordinator, recordIdFor, sanitizedError } = require('./email/send-coordinator');
 const { verifySendGridSignature, normalizeSendGridEvent, eventUpdate, suppressionBlockReason } = require('./email/email-status');
 
 admin.initializeApp();
@@ -648,49 +648,185 @@ function toDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function startOfToday() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return today;
+const REMINDER_MAX_ATTEMPTS = 5;
+const REMINDER_LEASE_MS = 10 * 60 * 1000;
+const EMAIL_PROVIDER_SECRETS = [sendGridApiKey, sendGridFromEmail, companySendGridCredentials, gmailClientId, gmailClientSecret, gmailRedirectUri, ...microsoftEmailSecrets];
+
+function cadenceDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function reminderDedupKey(companyId, invoiceId, reminderType, date) {
+  return [companyId, invoiceId, reminderType, cadenceDate(date)].join(':');
+}
+
+function reminderQueueId(companyId, invoiceId, reminderType, date) {
+  return [companyId, invoiceId, reminderType, cadenceDate(date)]
+    .map(value => encodeURIComponent(String(value)).replace(/%/g, '_')).join('__');
+}
+
+function overdueReminderPolicy(company) {
+  const policy = company.reminderPolicy || company.invoiceReminderPolicy || {};
+  const overdue = policy.overdue || {};
+  return {
+    enabled: policy.enabled === true && overdue.enabled !== false,
+    cadenceDays: Math.max(1, Math.min(365, Number(overdue.cadenceDays || policy.cadenceDays) || 7)),
+    subject: String(overdue.subject || 'Payment reminder for invoice {{invoiceNumber}}'),
+    body: String(overdue.body || 'Your invoice {{invoiceNumber}} is overdue. Please arrange payment of {{outstandingBalance}}.'),
+  };
+}
+
+function replaceReminderVariables(template, values) {
+  return String(template).replace(/{{\s*(invoiceNumber|outstandingBalance|dueDate|clientName|companyName)\s*}}/g,
+    (_, key) => String(values[key] ?? ''));
+}
+
+function retryableReminderError(error) {
+  const code = String(error?.code || '').replace(/^functions\//, '');
+  return ['internal', 'unavailable', 'resource-exhausted', 'deadline-exceeded', 'aborted', 'unknown'].includes(code);
+}
+
+function reminderFailureUpdate(error, attempt, now = new Date()) {
+  const retryable = retryableReminderError(error) && attempt < REMINDER_MAX_ATTEMPTS;
+  const delayMs = Math.min(6 * 60 * 60 * 1000, 30 * 1000 * (2 ** Math.max(0, attempt - 1)));
+  return {
+    status: retryable ? 'retry' : 'terminal_failure',
+    retryable, error: sanitizedError(error),
+    failedAt: now, updatedAt: now,
+    ...(retryable ? { nextAttemptAt: new Date(now.getTime() + delayMs) } : { terminalAt: now }),
+  };
+}
+
+async function enqueueOverdueReminders({ db, now = new Date(), FieldValue = admin.firestore.FieldValue }) {
+  const today = new Date(now); today.setHours(0, 0, 0, 0);
+  const companies = await db.collection('companies').get();
+  let queued = 0;
+  for (const companyDoc of companies.docs) {
+    const companyId = companyDoc.id;
+    const policy = overdueReminderPolicy(companyDoc.data() || {});
+    if (!policy.enabled) continue;
+    const summaries = await db.collection(`companies/${companyId}/invoiceSummaries`).where('status', 'in', ['sent', 'partial', 'overdue']).get();
+    for (const invoiceDoc of summaries.docs) {
+      const invoice = invoiceDoc.data() || {};
+      const dueDate = toDate(invoice.dueDate);
+      const outstanding = Math.max(0, Number(invoice.total || 0) - Number(invoice.amountPaid || 0));
+      if (!invoice.clientId || !dueDate || dueDate >= today || outstanding <= 0 || invoice.status === 'paid') continue;
+      const lastSent = toDate(invoice.lastReminderSentAt);
+      if (lastSent && today.getTime() - lastSent.getTime() < policy.cadenceDays * 86400000) continue;
+      const clientSnap = await db.doc(`companies/${companyId}/clients/${invoice.clientId}`).get();
+      const recipient = String(clientSnap.get('email') || '').trim().toLowerCase();
+      if (!EMAIL_PATTERN.test(recipient)) continue;
+      const suppression = await db.doc(`companies/${companyId}/emailSuppressions/${recipientHash(recipient)}`).get();
+      if (suppressionBlockReason(suppression.exists ? suppression.data() : null)) continue;
+      const queueId = reminderQueueId(companyId, invoiceDoc.id, 'overdue', today);
+      const queueRef = db.doc(`companies/${companyId}/emailReminderQueue/${queueId}`);
+      let created = false;
+      await db.runTransaction(async transaction => {
+        created = false;
+        const existing = await transaction.get(queueRef);
+        if (existing.exists) return;
+        transaction.set(queueRef, {
+          companyId, clientId: invoice.clientId, invoiceId: invoiceDoc.id, reminderType: 'overdue',
+          cadenceDate: cadenceDate(today), dedupKey: reminderDedupKey(companyId, invoiceDoc.id, 'overdue', today),
+          recipientHash: recipientHash(recipient), status: 'queued', attempts: 0,
+          createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), nextAttemptAt: today,
+        }, { merge: false });
+        created = true;
+      });
+      if (created) queued += 1;
+    }
+  }
+  return queued;
 }
 
 exports.queueOverdueInvoiceReminders = onSchedule('every day 08:00', async () => {
   const db = admin.firestore();
-  const today = startOfToday();
-  const companies = await db.collection('companies').get();
-  let queued = 0;
-
-  for (const companyDoc of companies.docs) {
-    const companyId = companyDoc.id;
-    const summaries = await db.collection(`companies/${companyId}/invoiceSummaries`)
-      .where('status', 'in', ['sent', 'partial', 'overdue'])
-      .get();
-
-    for (const invoiceDoc of summaries.docs) {
-      const invoice = invoiceDoc.data();
-      const dueDate = toDate(invoice.dueDate);
-      const outstanding = Math.max(0, Number(invoice.total || 0) - Number(invoice.amountPaid || 0));
-      if (!invoice.clientId || !dueDate || dueDate >= today || outstanding <= 0) continue;
-
-      const clientRef = db.doc(`companies/${companyId}/clients/${invoice.clientId}`);
-      const clientSnap = await clientRef.get();
-      const recipient = clientSnap.get('email');
-      if (!EMAIL_PATTERN.test(recipient || '')) continue;
-
-      await db.collection(`companies/${companyId}/emailReminderQueue`).add({
-        companyId,
-        clientId: invoice.clientId,
-        invoiceId: invoiceDoc.id,
-        reminderType: 'overdue',
-        recipient,
-        status: 'queued',
-        queuedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-      queued += 1;
-    }
-  }
-
+  const queued = await enqueueOverdueReminders({ db });
   console.log(`Queued ${queued} overdue invoice reminder(s).`);
+});
+
+async function claimReminderJob(db, ref, now = new Date()) {
+  let claimed = null;
+  await db.runTransaction(async transaction => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists) return;
+    const job = snap.data() || {};
+    const lease = toDate(job.leaseExpiresAt);
+    const eligible = ['queued', 'retry'].includes(job.status) || (job.status === 'processing' && lease && lease <= now);
+    if (!eligible || (toDate(job.nextAttemptAt) || new Date(0)) > now) return;
+    if (Number(job.attempts || 0) >= REMINDER_MAX_ATTEMPTS) {
+      transaction.set(ref, { status: 'terminal_failure', retryable: false, error: { code: 'lease-expired', message: 'Maximum reminder attempts exhausted after a worker lease expired.' }, terminalAt: now, updatedAt: now }, { merge: true });
+      return;
+    }
+    claimed = { ...job, id: ref.id, attempts: Number(job.attempts || 0) + 1 };
+    transaction.set(ref, { status: 'processing', attempts: claimed.attempts, claimedAt: now, leaseExpiresAt: new Date(now.getTime() + REMINDER_LEASE_MS), updatedAt: now }, { merge: true });
+  });
+  return claimed;
+}
+
+async function buildReminderMessage(job, db = admin.firestore()) {
+  const [companySnap, summarySnap, clientSnap] = await Promise.all([
+    db.doc(`companies/${job.companyId}`).get(),
+    db.doc(`companies/${job.companyId}/invoiceSummaries/${job.invoiceId}`).get(),
+    db.doc(`companies/${job.companyId}/clients/${job.clientId}`).get(),
+  ]);
+  if (!summarySnap.exists) throw new HttpsError('not-found', 'Invoice summary no longer exists.');
+  const company = companySnap.data() || {}, invoice = summarySnap.data() || {}, client = clientSnap.data() || {};
+  const outstanding = Math.max(0, Number(invoice.total || 0) - Number(invoice.amountPaid || 0));
+  if (invoice.status === 'paid' || outstanding <= 0) throw new HttpsError('failed-precondition', 'Invoice is already paid.');
+  const policy = overdueReminderPolicy(company);
+  if (!policy.enabled) throw new HttpsError('failed-precondition', 'Invoice reminders are disabled.');
+  const recipient = String(client.email || '').trim().toLowerCase();
+  if (!EMAIL_PATTERN.test(recipient) || recipientHash(recipient) !== job.recipientHash) throw new HttpsError('failed-precondition', 'Reminder recipient is invalid or has changed.');
+  const suppression = await db.doc(`companies/${job.companyId}/emailSuppressions/${recipientHash(recipient)}`).get();
+  const block = suppressionBlockReason(suppression.exists ? suppression.data() : null);
+  if (block) throw new HttpsError('failed-precondition', block);
+  const invoicePath = `companies/${job.companyId}/clients/${job.clientId}/invoices/${job.invoiceId}`;
+  const invoiceSnap = await db.doc(invoicePath).get();
+  if (!invoiceSnap.exists) throw new HttpsError('not-found', 'Server-owned invoice document is missing.');
+  const record = invoiceSnap.data() || {};
+  const storagePath = [...documentAttachmentPaths(record)][0];
+  if (!storagePath) throw new HttpsError('not-found', 'Invoice attachment is missing.');
+  const values = { invoiceNumber: invoice.invoiceNumber || invoice.invoiceNo || record.invoiceNumber || job.invoiceId, outstandingBalance: outstanding, dueDate: cadenceDate(toDate(invoice.dueDate) || new Date()), clientName: client.name || '', companyName: company.name || '' };
+  const data = { companyId: job.companyId, clientId: job.clientId, documentType: 'invoice', documentId: job.invoiceId, reminderType: job.reminderType, idempotencyKey: createHash('sha256').update(job.dedupKey).digest('hex'), recipient, subject: replaceReminderVariables(policy.subject, values), messageBody: replaceReminderVariables(policy.body, values), attachment: { storagePath } };
+  const document = { companyId: job.companyId, clientId: job.clientId, documentType: 'invoice', documentId: job.invoiceId, path: invoicePath, record };
+  return { data, document, company };
+}
+
+async function processReminderJob(job, ref, { db = admin.firestore(), dispatch = dispatchEmail } = {}) {
+  try {
+    const { data, document, company } = await buildReminderMessage(job, db);
+    const integrations = await companyEmailIntegrations(data.companyId);
+    const configuration = { gmail: gmailProvider().configured(), microsoftExchange: microsoftEmailProvider().configured(), nexusFallback: nexusEnabled() && !!sendGridApiKey.value() && !!sendGridFromEmail.value() };
+    const route = resolveRoute(undefined, integrations, configuration);
+    const attachment = await resolveEmailAttachment(data, document);
+    const replyToEmail = String(integrations.nexusFallback?.replyToEmail || '').trim().toLowerCase();
+    if (route.provider === 'nexus_fallback') await reserveNexusCapacity(data.companyId, data.recipient);
+    const message = { to: [data.recipient], cc: [], bcc: [], subject: data.subject, text: data.messageBody, attachments: [attachment], sender: { ...integrations.selectedSender, companyName: company.name, replyToEmail, companyId: data.companyId, metadata: { companyId: data.companyId, clientId: data.clientId, documentType: 'invoice', documentId: data.documentId, storagePath: data.attachment.storagePath, reminderQueueId: job.id } } };
+    const result = await dispatch({ integrations, message, configuration, adapters: { gmail: sendWithGmail, microsoft_exchange: sendWithMicrosoftGraph, company_sendgrid: sendWithCompanySendGrid, nexus_fallback: sendWithNexusFallback } });
+    await completeReminderJob({ db, ref, job, document, data, result });
+  } catch (error) {
+    await ref.set(reminderFailureUpdate(error, job.attempts), { merge: true });
+  }
+}
+
+async function completeReminderJob({ db, ref, job, document, data, result, FieldValue = admin.firestore.FieldValue }) {
+  const now = FieldValue.serverTimestamp();
+  await db.runTransaction(async transaction => {
+    transaction.set(ref, { status: 'completed', retryable: false, provider: result.effectiveProvider, providerMessageId: result.messageId, completedAt: now, updatedAt: now, leaseExpiresAt: null }, { merge: true });
+    const metadata = { lastReminderSentAt: now, lastReminderType: job.reminderType, reminderCount: FieldValue.increment(1), 'lastEmail.status': 'accepted', 'lastEmail.providerMessageId': result.messageId, updatedAt: now };
+    transaction.set(db.doc(document.path), metadata, { merge: true });
+    transaction.set(db.doc(`companies/${data.companyId}/invoiceSummaries/${data.documentId}`), metadata, { merge: true });
+  });
+}
+
+exports.processInvoiceReminderQueue = onSchedule({ schedule: 'every 5 minutes', secrets: EMAIL_PROVIDER_SECRETS }, async () => {
+  const db = admin.firestore(), now = new Date();
+  const candidates = await db.collectionGroup('emailReminderQueue').where('status', 'in', ['queued', 'retry', 'processing']).limit(100).get();
+  for (const snap of candidates.docs) {
+    const job = await claimReminderJob(db, snap.ref, now);
+    if (job) await processReminderJob(job, snap.ref, { db });
+  }
 });
 
 const googleClientId = defineSecret('GOOGLE_DRIVE_CLIENT_ID');
@@ -1139,4 +1275,4 @@ exports.generatePdfDocument = onCall({ memory: '1GiB', timeoutSeconds: 120 }, as
   }
 });
 
-module.exports._test = { validatePayload, validateAttachmentPath, validatedAttachmentFilename, loadEmailDocument, documentAttachmentPaths, documentAttachmentFilename, resolveEmailAttachment, buildSendGridPayload, MAX_ATTACHMENT_BYTES, renderFreeMarkerTemplate, renderDocumentTemplate, buildTemplateVariables, formatPhoneNumber, htmlToText, normalizeEmailList, buildEmailContent, isCompanyMember, resolveEmailProvider, validatePdfAnalysisRequest, buildPdfMapping, validatePdfVariables, generatedPdfMetadata, validatePdfGenerationRequest, sanitizePathSegment, minimalPdfBuffer, firebaseStorageDownloadUrl };
+module.exports._test = { validatePayload, validateAttachmentPath, validatedAttachmentFilename, loadEmailDocument, documentAttachmentPaths, documentAttachmentFilename, resolveEmailAttachment, buildSendGridPayload, MAX_ATTACHMENT_BYTES, renderFreeMarkerTemplate, renderDocumentTemplate, buildTemplateVariables, formatPhoneNumber, htmlToText, normalizeEmailList, buildEmailContent, isCompanyMember, resolveEmailProvider, validatePdfAnalysisRequest, buildPdfMapping, validatePdfVariables, generatedPdfMetadata, validatePdfGenerationRequest, sanitizePathSegment, minimalPdfBuffer, firebaseStorageDownloadUrl, cadenceDate, reminderDedupKey, reminderQueueId, overdueReminderPolicy, replaceReminderVariables, retryableReminderError, reminderFailureUpdate, enqueueOverdueReminders, claimReminderJob, buildReminderMessage, processReminderJob, completeReminderJob, REMINDER_MAX_ATTEMPTS };
