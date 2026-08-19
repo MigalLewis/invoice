@@ -1,6 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { doc, docData, Firestore, serverTimestamp, setDoc } from '@angular/fire/firestore';
 import { map, Observable } from 'rxjs';
+import { Functions, httpsCallable } from '@angular/fire/functions';
 import { ActivityService } from './activity.service';
 import {
   CompanyEmailSettings,
@@ -13,6 +14,23 @@ import {
 export class EmailIntegrationService {
   private readonly db = inject(Firestore);
   private readonly activityService = inject(ActivityService);
+  private readonly functions = inject(Functions, { optional: true });
+
+  async providerConfiguration(): Promise<{ gmail: boolean }> {
+    if (!this.functions) return { gmail: false };
+    return (await httpsCallable<void, { gmail: boolean }>(this.functions, 'getEmailProviderConfiguration')()).data;
+  }
+
+  async connectEmailProvider(provider: 'gmail', companyId: string, accountEmail?: string): Promise<string> {
+    if (!this.functions) throw new Error('Firebase Functions is not configured.');
+    const result = await httpsCallable<{ companyId: string; accountEmail?: string }, { url: string }>(this.functions, 'startGmailOAuth')({ companyId, accountEmail: accountEmail || undefined });
+    return result.data.url;
+  }
+
+  async disconnectEmailProvider(provider: 'gmail', companyId: string): Promise<void> {
+    if (!this.functions) throw new Error('Firebase Functions is not configured.');
+    await httpsCallable<{ companyId: string }, { connected: boolean }>(this.functions, 'disconnectGmail')({ companyId });
+  }
 
   getCompanySettings(companyId: string): Observable<CompanyEmailSettings> {
     return docData(doc(this.db, `companies/${companyId}`)).pipe(

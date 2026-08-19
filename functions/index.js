@@ -1,13 +1,28 @@
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 const { randomUUID } = require('crypto');
+const { createGmailProvider } = require('./email/providers/gmail');
 
 admin.initializeApp();
 
 const sendGridApiKey = defineSecret('SENDGRID_API_KEY');
 const sendGridFromEmail = defineSecret('SENDGRID_FROM_EMAIL');
+// Gmail intentionally has its own OAuth application. Do not substitute Drive
+// credentials unless that OAuth client was explicitly registered for both.
+const gmailClientId = defineSecret('GMAIL_OAUTH_CLIENT_ID');
+const gmailClientSecret = defineSecret('GMAIL_OAUTH_CLIENT_SECRET');
+const gmailRedirectUri = defineSecret('GMAIL_OAUTH_REDIRECT_URI');
+
+function gmailProvider() {
+  return createGmailProvider({
+    db: admin.firestore(),
+    clientId: () => gmailClientId.value(),
+    clientSecret: () => gmailClientSecret.value(),
+    redirectUri: () => gmailRedirectUri.value(),
+  });
+}
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // SendGrid limits the complete message (including base64 expansion) to 30 MB.
@@ -23,6 +38,10 @@ const ALLOWED_ATTACHMENT_TYPES = new Set([
 function normalizeEmailList(value) {
   if (Array.isArray(value)) return value.map(String).map(v => v.trim()).filter(Boolean);
   return String(value || '').split(/[;,]/).map(v => v.trim()).filter(Boolean);
+}
+
+function resolveEmailProvider(requestedProvider, companyDefault) {
+  return requestedProvider || companyDefault || 'sendgrid';
 }
 
 function validatePayload(data) {
@@ -207,14 +226,74 @@ async function sendWithSendGrid(data) {
   return response.headers.get('x-message-id') || `sendgrid-${Date.now()}`;
 }
 
-exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail] }, async request => {
+exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail, gmailClientId, gmailClientSecret, gmailRedirectUri] }, async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required to send email.');
   const data = request.data || {};
   const errors = validatePayload(data);
   if (errors.length) throw new HttpsError('invalid-argument', errors.join('; '));
   await assertCompanyMember(request.auth.uid, data.companyId);
-  const messageId = await sendWithSendGrid(data);
-  return { provider: 'sendgrid', messageId, accepted: true, sentAt: new Date().toISOString() };
+  const company = (await admin.firestore().doc(`companies/${data.companyId}`).get()).data() || {};
+  const provider = resolveEmailProvider(data.provider, company.emailIntegrations?.defaultProvider);
+  let messageId;
+  if (provider === 'gmail') {
+    const content = await buildEmailContent(data);
+    const attachment = await resolveEmailAttachment(data);
+    const text = content.find(item => item.type === 'text/plain')?.value || '';
+    const html = content.find(item => item.type === 'text/html')?.value;
+    try {
+      messageId = await gmailProvider().send(data.companyId, { to: [data.recipient], cc: normalizeEmailList(data.cc), bcc: normalizeEmailList(data.bcc), subject: data.subject, text, html, attachments: [attachment] });
+    } catch (error) {
+      throw new HttpsError(error.message === 'not_connected' ? 'failed-precondition' : 'internal', `Gmail send failed: ${error.message}`);
+    }
+  } else if (provider === 'sendgrid') {
+    messageId = await sendWithSendGrid(data);
+  } else {
+    throw new HttpsError('failed-precondition', `Email provider ${provider} is not available.`);
+  }
+  return { provider, messageId, accepted: true, sentAt: new Date().toISOString() };
+});
+
+const gmailSecrets = [gmailClientId, gmailClientSecret, gmailRedirectUri];
+
+exports.getEmailProviderConfiguration = onCall({ secrets: gmailSecrets }, async request => {
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  return { gmail: gmailProvider().configured() };
+});
+
+exports.startGmailOAuth = onCall({ secrets: gmailSecrets }, async request => {
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  const { companyId, accountEmail } = request.data || {};
+  if (!companyId) throw new HttpsError('invalid-argument', 'companyId is required.');
+  await assertCompanyMember(request.auth.uid, companyId);
+  try {
+    return { url: await gmailProvider().start({ uid: request.auth.uid, companyId, requestedMailbox: accountEmail }) };
+  } catch (error) {
+    throw new HttpsError('failed-precondition', error.message);
+  }
+});
+
+exports.gmailOAuthCallback = onRequest({ secrets: gmailSecrets }, async (request, response) => {
+  const state = String(request.query.state || '');
+  try {
+    const result = await gmailProvider().callback({ state, code: String(request.query.code || '') });
+    response.redirect(302, `/settings?emailOAuth=gmail&result=success&companyId=${encodeURIComponent(result.companyId)}`);
+  } catch (error) {
+    response.redirect(302, `/settings?emailOAuth=gmail&result=error&reason=${encodeURIComponent(error.message)}`);
+  }
+});
+
+exports.checkGmailConnection = onCall({ secrets: gmailSecrets }, async request => {
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  const { companyId } = request.data || {};
+  await assertCompanyMember(request.auth.uid, companyId);
+  return gmailProvider().health(companyId);
+});
+
+exports.disconnectGmail = onCall({ secrets: gmailSecrets }, async request => {
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  const { companyId } = request.data || {};
+  await assertCompanyMember(request.auth.uid, companyId);
+  return gmailProvider().disconnect(companyId);
 });
 
 
@@ -712,4 +791,4 @@ exports.generatePdfDocument = onCall({ memory: '1GiB', timeoutSeconds: 120 }, as
   }
 });
 
-module.exports._test = { validatePayload, validateAttachmentPath, validatedAttachmentFilename, resolveEmailAttachment, buildSendGridPayload, MAX_ATTACHMENT_BYTES, renderFreeMarkerTemplate, renderDocumentTemplate, buildTemplateVariables, formatPhoneNumber, htmlToText, normalizeEmailList, buildEmailContent, isCompanyMember, validatePdfAnalysisRequest, buildPdfMapping, validatePdfVariables, generatedPdfMetadata, validatePdfGenerationRequest, sanitizePathSegment, minimalPdfBuffer, firebaseStorageDownloadUrl };
+module.exports._test = { validatePayload, validateAttachmentPath, validatedAttachmentFilename, resolveEmailAttachment, buildSendGridPayload, MAX_ATTACHMENT_BYTES, renderFreeMarkerTemplate, renderDocumentTemplate, buildTemplateVariables, formatPhoneNumber, htmlToText, normalizeEmailList, buildEmailContent, isCompanyMember, resolveEmailProvider, validatePdfAnalysisRequest, buildPdfMapping, validatePdfVariables, generatedPdfMetadata, validatePdfGenerationRequest, sanitizePathSegment, minimalPdfBuffer, firebaseStorageDownloadUrl };
