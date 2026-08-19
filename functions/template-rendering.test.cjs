@@ -67,7 +67,7 @@ const { _test } = require('./index.js');
   assert.strictEqual(htmlText, 'Hello World');
 
   const errors = _test.validatePayload({
-    companyId: 'co', clientId: 'cl', documentType: 'invoice', documentId: 'inv', recipient: 'a@example.com', subject: 'Subject',
+    companyId: 'co', clientId: 'cl', documentType: 'invoice', documentId: 'inv', idempotencyKey: 'abcdefghijklmnop', recipient: 'a@example.com', subject: 'Subject',
     templateSelection: { kind: 'designed', templateId: 'tmpl' }, attachment: { storagePath: 'docs/invoice.pdf' }
   });
   assert.deepStrictEqual(errors, []);
