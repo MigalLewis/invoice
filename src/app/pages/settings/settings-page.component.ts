@@ -61,6 +61,7 @@ export class SettingsPageComponent {
   readonly gmailConfigured = signal(false);
   readonly microsoftExchangeConfigured = signal(false);
   readonly nexusFallbackConfigured = signal(false);
+  readonly nexusFromEmail = signal('');
   readonly logoUrl = signal('');
   readonly signatureUrl = signal('');
   readonly signerName = signal('');
@@ -82,8 +83,9 @@ export class SettingsPageComponent {
     googleDriveFolder: [''], googleDriveFolderId: [''], oneDriveFolder: [''], oneDriveFolderId: [''], localFolderPath: ['']
   });
   readonly emailForm = this.fb.nonNullable.group({
-    defaultProvider: ['nexus_fallback' as EmailProvider], gmailAccountEmail: [''], exchangeAccountEmail: [''],
-    exchangeTenantId: [''], sendgridFromEmail: [''], sendgridFromName: [''], nexusFallbackEnabled: [false]
+    defaultProvider: ['' as EmailProvider], gmailAccountEmail: [''], exchangeAccountEmail: [''],
+    exchangeTenantId: [''], sendgridFromEmail: [''], sendgridFromName: [''], nexusFallbackEnabled: [false],
+    nexusReplyToEmail: ['', Validators.email]
   });
 
   constructor() {
@@ -213,16 +215,26 @@ export class SettingsPageComponent {
     const companyId = this.companyId();
     if (!companyId) return;
     const value = this.emailForm.getRawValue();
+    if (!value.defaultProvider) {
+      this.message.set('Choose a company email provider to complete onboarding.');
+      return;
+    }
+    if (value.nexusFallbackEnabled && this.emailForm.controls.nexusReplyToEmail.invalid) {
+      this.emailForm.controls.nexusReplyToEmail.markAsTouched();
+      this.message.set('Enter a valid Reply-To address before enabling Nexus email.');
+      return;
+    }
     this.savingEmail.set(true);
     this.message.set('');
     try {
       await this.emailService.saveCompanySettings(companyId, {
         defaultProvider: value.defaultProvider,
+        onboardingCompleted: true,
         selectedSender: emailSenderFor(value.defaultProvider, value),
         gmail: { connected: !!this.emailSettings()?.gmail?.connected, accountEmail: value.gmailAccountEmail || undefined },
         microsoftExchange: { connected: !!this.emailSettings()?.microsoftExchange?.connected, accountEmail: value.exchangeAccountEmail || undefined, tenantId: value.exchangeTenantId || undefined },
         sendgrid: { mode: 'company_owned_sendgrid', ...this.emailSettings()?.sendgrid, connected: !!this.emailSettings()?.sendgrid?.connected },
-        nexusFallback: { mode: 'nexus_managed_fallback', enabled: value.nexusFallbackEnabled, configured: this.nexusFallbackConfigured() }
+        nexusFallback: { mode: 'nexus_managed_fallback', enabled: value.nexusFallbackEnabled, configured: this.nexusFallbackConfigured(), replyToEmail: value.nexusReplyToEmail || undefined, effectiveFromEmail: this.nexusFromEmail() || undefined }
       });
       this.message.set('Email integration settings saved. Complete provider authorization in the backend connection flow before sending mail.');
     } finally {
@@ -307,6 +319,7 @@ export class SettingsPageComponent {
         this.gmailConfigured.set(configuration.gmail);
         this.microsoftExchangeConfigured.set(configuration.microsoftExchange);
         this.nexusFallbackConfigured.set(configuration.nexusFallback);
+        this.nexusFromEmail.set(configuration.nexusFromEmail || '');
       }).catch(() => { this.gmailConfigured.set(false); this.microsoftExchangeConfigured.set(false); });
       this.loadCompany();
       this.storageService.getCompanySettings(companyId).pipe(take(1)).subscribe(settings => {
@@ -324,13 +337,14 @@ export class SettingsPageComponent {
       this.emailService.getCompanySettings(companyId).pipe(take(1)).subscribe(settings => {
         this.emailSettings.set(settings);
         this.emailForm.patchValue({
-          defaultProvider: settings.defaultProvider,
+          defaultProvider: settings.onboardingCompleted ? settings.defaultProvider : '' as EmailProvider,
           gmailAccountEmail: settings.gmail?.accountEmail || '',
           exchangeAccountEmail: settings.microsoftExchange?.accountEmail || '',
           exchangeTenantId: settings.microsoftExchange?.tenantId || '',
           sendgridFromEmail: settings.sendgrid?.fromEmail || '',
           sendgridFromName: settings.sendgrid?.fromName || '',
-          nexusFallbackEnabled: settings.nexusFallback?.enabled || false
+          nexusFallbackEnabled: settings.nexusFallback?.enabled || false,
+          nexusReplyToEmail: settings.nexusFallback?.replyToEmail || ''
         });
       });
     });

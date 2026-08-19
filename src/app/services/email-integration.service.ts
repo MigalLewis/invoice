@@ -16,9 +16,9 @@ export class EmailIntegrationService {
   private readonly activityService = inject(ActivityService);
   private readonly functions = inject(Functions, { optional: true });
 
-  async providerConfiguration(): Promise<{ gmail: boolean; microsoftExchange: boolean; nexusFallback: boolean; microsoftTenantPolicy?: string }> {
+  async providerConfiguration(): Promise<{ gmail: boolean; microsoftExchange: boolean; nexusFallback: boolean; nexusFromEmail?: string; microsoftTenantPolicy?: string }> {
     if (!this.functions) return { gmail: false, microsoftExchange: false, nexusFallback: false };
-    return (await httpsCallable<void, { gmail: boolean; microsoftExchange: boolean; nexusFallback: boolean; microsoftTenantPolicy?: string }>(this.functions, 'getEmailProviderConfiguration')()).data;
+    return (await httpsCallable<void, { gmail: boolean; microsoftExchange: boolean; nexusFallback: boolean; nexusFromEmail?: string; microsoftTenantPolicy?: string }>(this.functions, 'getEmailProviderConfiguration')()).data;
   }
 
   async connectEmailProvider(provider: 'gmail' | 'microsoft_exchange', companyId: string, accountEmail?: string): Promise<string> {
@@ -83,6 +83,7 @@ export class EmailIntegrationService {
       ...DEFAULT_EMAIL_SETTINGS,
       ...settings,
       defaultProvider,
+      onboardingCompleted: settings?.onboardingCompleted ?? !!settings?.defaultProvider,
       gmail: { connected: false, ...settings?.gmail },
       microsoftExchange: { connected: false, ...settings?.microsoftExchange },
       sendgrid: { mode: 'company_owned_sendgrid', connected: false, apiKeyConfigured: false, ...settings?.sendgrid },

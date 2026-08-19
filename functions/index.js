@@ -2,15 +2,16 @@ const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
 const { defineSecret } = require('firebase-functions/params');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
-const { randomUUID } = require('crypto');
+const { randomUUID, createHash } = require('crypto');
 const { createGmailProvider } = require('./email/providers/gmail');
 const { createMicrosoftProvider } = require('./email/providers/microsoft');
-const { dispatchEmail } = require('./email/dispatcher');
+const { dispatchEmail, resolveRoute } = require('./email/dispatcher');
 
 admin.initializeApp();
 
 const sendGridApiKey = defineSecret('SENDGRID_API_KEY');
 const sendGridFromEmail = defineSecret('SENDGRID_FROM_EMAIL');
+const sendGridEventWebhookToken = defineSecret('SENDGRID_EVENT_WEBHOOK_TOKEN');
 // JSON object keyed by company ID. This administrator-managed Secret Manager
 // value is the only supported location for company SendGrid API keys.
 const companySendGridCredentials = defineSecret('COMPANY_SENDGRID_CREDENTIALS');
@@ -270,12 +271,60 @@ async function sendWithCompanySendGrid(message, integrations) {
 }
 
 async function sendWithNexusFallback(message) {
+  const configuredFrom = String(sendGridFromEmail.value() || '').trim().toLowerCase();
+  const nexusDomain = String(process.env.NEXUS_SENDGRID_DOMAIN || '').trim().toLowerCase();
+  if (!nexusDomain || configuredFrom.split('@')[1] !== nexusDomain) {
+    throw new HttpsError('failed-precondition', 'The Nexus sender must use the administrator-approved Nexus domain.');
+  }
   return sendWithSendGrid(
     message,
     { apiKey: sendGridApiKey.value(), fromEmail: sendGridFromEmail.value() },
     message.sender.metadata,
-    { replyTo: message.sender.companyEmail }
+    {
+      replyTo: message.sender.replyToEmail,
+      fromName: message.sender.companyName,
+      fromNameValidated: true,
+    }
   );
+}
+
+function nexusEnabled() {
+  return process.env.NEXUS_EMAIL_ENABLED === 'true';
+}
+
+function nexusLimits() {
+  return {
+    hourly: Math.max(1, Number(process.env.NEXUS_EMAIL_HOURLY_LIMIT) || 50),
+    daily: Math.max(1, Number(process.env.NEXUS_EMAIL_DAILY_LIMIT) || 250),
+  };
+}
+
+function recipientHash(email) {
+  return createHash('sha256').update(String(email || '').trim().toLowerCase()).digest('hex');
+}
+
+async function reserveNexusCapacity(companyId, recipient) {
+  if (!nexusEnabled()) throw new HttpsError('failed-precondition', 'Nexus managed email is disabled by an administrator.');
+  const db = admin.firestore();
+  const suppression = await db.doc(`companies/${companyId}/emailSuppressions/${recipientHash(recipient)}`).get();
+  if (suppression.exists && suppression.get('active') !== false) {
+    throw new HttpsError('failed-precondition', 'The recipient is suppressed due to a bounce, complaint, or unsubscribe.');
+  }
+  const now = new Date();
+  const day = now.toISOString().slice(0, 10);
+  const hour = now.toISOString().slice(0, 13).replace(/[:T]/g, '-');
+  const dailyRef = db.doc(`companies/${companyId}/emailUsage/${day}`);
+  const hourlyRef = db.doc(`companies/${companyId}/emailUsage/${day}-${hour}`);
+  const limits = nexusLimits();
+  await db.runTransaction(async transaction => {
+    const [dailySnap, hourlySnap] = await Promise.all([transaction.get(dailyRef), transaction.get(hourlyRef)]);
+    const dailyCount = Number(dailySnap.get('count') || 0);
+    const hourlyCount = Number(hourlySnap.get('count') || 0);
+    if (dailyCount >= limits.daily) throw new HttpsError('resource-exhausted', 'The company daily Nexus email quota has been reached.');
+    if (hourlyCount >= limits.hourly) throw new HttpsError('resource-exhausted', 'The company Nexus email rate limit has been reached.');
+    transaction.set(dailyRef, { count: dailyCount + 1, period: 'day', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    transaction.set(hourlyRef, { count: hourlyCount + 1, period: 'hour', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
 }
 
 function companySendGridCredential(companyId) {
@@ -318,6 +367,20 @@ exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail
   const companySnap = await assertCompanyMember(request.auth.uid, data.companyId);
   const company = companySnap.data() || {};
   const integrations = company.emailIntegrations || {};
+  if (integrations.onboardingCompleted !== true) {
+    throw new HttpsError('failed-precondition', 'Choose and save an email provider in company settings before sending.');
+  }
+  const nexusConfigured = nexusEnabled() && !!sendGridApiKey.value() && !!sendGridFromEmail.value();
+  const configuration = { gmail: gmailProvider().configured(), microsoftExchange: microsoftEmailProvider().configured(), nexusFallback: nexusConfigured };
+  const route = resolveRoute(data.provider, integrations, configuration);
+  const replyToEmail = String(integrations.nexusFallback?.replyToEmail || '').trim().toLowerCase();
+  if (route.provider === 'nexus_fallback') {
+    if (!EMAIL_PATTERN.test(replyToEmail)) throw new HttpsError('failed-precondition', 'A valid company Reply-To address is required for Nexus managed email.');
+    if (replyToEmail !== String(company.email || '').trim().toLowerCase()) {
+      throw new HttpsError('failed-precondition', 'The Nexus Reply-To address must match the validated company email.');
+    }
+    await reserveNexusCapacity(data.companyId, data.recipient);
+  }
   const content = await buildEmailContent(data);
   const message = {
     to: [data.recipient], cc: normalizeEmailList(data.cc), bcc: normalizeEmailList(data.bcc),
@@ -325,16 +388,30 @@ exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail
     text: content.find(item => item.type === 'text/plain')?.value || '',
     html: content.find(item => item.type === 'text/html')?.value,
     attachments: [await resolveEmailAttachment(data)],
-    sender: { ...integrations.selectedSender, companyEmail: company.email, companyId: data.companyId, metadata: {
+    sender: { ...integrations.selectedSender, companyName: company.name, replyToEmail, companyId: data.companyId, metadata: {
       companyId: data.companyId, clientId: data.clientId, documentType: data.documentType,
       documentId: data.documentId, storagePath: data.attachment.storagePath,
     } },
   };
-  return dispatchEmail({
-    requestedProvider: data.provider, integrations, message,
-    configuration: { gmail: gmailProvider().configured(), microsoftExchange: microsoftEmailProvider().configured(), nexusFallback: !!sendGridApiKey.value() && !!sendGridFromEmail.value() },
-    adapters: { gmail: sendWithGmail, microsoft_exchange: sendWithMicrosoftGraph, company_sendgrid: sendWithCompanySendGrid, nexus_fallback: sendWithNexusFallback },
-  });
+  const recordRef = admin.firestore().collection(`companies/${data.companyId}/emailSendRecords`).doc();
+  const audit = {
+    requestedProvider: route.requestedProvider, effectiveProvider: route.provider,
+    fallbackReason: route.fallbackReason, recipientHash: recipientHash(data.recipient),
+    documentType: data.documentType, documentId: data.documentId, sentBy: request.auth.uid,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(), status: 'attempting',
+  };
+  await recordRef.set(audit);
+  try {
+    const result = await dispatchEmail({
+      requestedProvider: data.provider, integrations, message, configuration,
+      adapters: { gmail: sendWithGmail, microsoft_exchange: sendWithMicrosoftGraph, company_sendgrid: sendWithCompanySendGrid, nexus_fallback: sendWithNexusFallback },
+    });
+    await recordRef.set({ status: 'accepted', messageId: result.messageId, completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return { ...result, sendRecordId: recordRef.id, effectiveFrom: route.provider === 'nexus_fallback' ? sendGridFromEmail.value() : undefined };
+  } catch (error) {
+    await recordRef.set({ status: 'failed', failureCode: error?.code || 'internal', completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    throw error;
+  }
 });
 
 exports.verifyCompanySendGrid = onCall({ secrets: [companySendGridCredentials] }, async request => {
@@ -359,7 +436,29 @@ const gmailSecrets = [gmailClientId, gmailClientSecret, gmailRedirectUri];
 
 exports.getEmailProviderConfiguration = onCall({ secrets: [...gmailSecrets, ...microsoftEmailSecrets, sendGridApiKey, sendGridFromEmail] }, async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required.');
-  return { gmail: gmailProvider().configured(), microsoftExchange: microsoftEmailProvider().configured(), nexusFallback: !!sendGridApiKey.value() && !!sendGridFromEmail.value(), microsoftTenantPolicy: microsoftEmailProvider().tenantPolicy().mode };
+  const nexusFallback = nexusEnabled() && !!sendGridApiKey.value() && !!sendGridFromEmail.value();
+  return { gmail: gmailProvider().configured(), microsoftExchange: microsoftEmailProvider().configured(), nexusFallback, nexusFromEmail: nexusFallback ? sendGridFromEmail.value() : undefined, microsoftTenantPolicy: microsoftEmailProvider().tenantPolicy().mode };
+});
+
+// Configure SendGrid Event Webhook to include this bearer token. Permanent
+// failures and complaints are enforced before any later Nexus send.
+exports.sendGridEventWebhook = onRequest({ secrets: [sendGridEventWebhookToken] }, async (request, response) => {
+  const supplied = String(request.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!sendGridEventWebhookToken.value() || supplied !== sendGridEventWebhookToken.value()) {
+    response.status(401).send('Unauthorized'); return;
+  }
+  const events = Array.isArray(request.body) ? request.body : [];
+  const suppressing = new Set(['bounce', 'dropped', 'spamreport', 'unsubscribe', 'group_unsubscribe']);
+  const batch = admin.firestore().batch();
+  for (const event of events.slice(0, 1000)) {
+    const companyId = String(event.companyId || '');
+    const email = String(event.email || '').trim().toLowerCase();
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(companyId) || !EMAIL_PATTERN.test(email) || !suppressing.has(event.event)) continue;
+    const ref = admin.firestore().doc(`companies/${companyId}/emailSuppressions/${recipientHash(email)}`);
+    batch.set(ref, { active: true, reason: event.event, provider: 'nexus_fallback', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  }
+  await batch.commit();
+  response.status(204).send();
 });
 
 exports.startGmailOAuth = onCall({ secrets: gmailSecrets }, async request => {

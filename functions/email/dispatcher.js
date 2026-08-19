@@ -25,15 +25,24 @@ function resolveRoute(requestedProvider, integrations = {}, configuration = {}) 
   if (!PROVIDERS.has(provider)) {
     throw new HttpsError('failed-precondition', `Email provider ${provider} is not available.`);
   }
-  if (providerIsUsable(provider, integrations, configuration)) return provider;
+  if (providerIsUsable(provider, integrations, configuration)) return {
+    provider,
+    requestedProvider: provider,
+    fallbackReason: null,
+  };
   if (provider !== 'nexus_fallback' && providerIsUsable('nexus_fallback', integrations, configuration)) {
-    return 'nexus_fallback';
+    return {
+      provider: 'nexus_fallback',
+      requestedProvider: provider,
+      fallbackReason: `${provider}_unavailable`,
+    };
   }
   throw new HttpsError('failed-precondition', `Email provider ${provider} is not connected or configured.`);
 }
 
 async function dispatchEmail({ requestedProvider, integrations, configuration, message, adapters }) {
-  const provider = resolveRoute(requestedProvider, integrations, configuration);
+  const route = resolveRoute(requestedProvider, integrations, configuration);
+  const { provider } = route;
   const adapter = adapters[provider];
   if (typeof adapter !== 'function') {
     throw new HttpsError('failed-precondition', `Email provider ${provider} is not available.`);
@@ -43,6 +52,9 @@ async function dispatchEmail({ requestedProvider, integrations, configuration, m
   if (!messageId) throw new HttpsError('internal', `${provider} did not return a message ID.`);
   return {
     provider,
+    effectiveProvider: provider,
+    requestedProvider: route.requestedProvider,
+    fallbackReason: route.fallbackReason,
     messageId,
     accepted: typeof result === 'object' && result.accepted !== undefined ? !!result.accepted : true,
     sentAt: typeof result === 'object' && result.sentAt ? result.sentAt : new Date().toISOString(),

@@ -64,6 +64,11 @@ interface BrandedEmailTemplateVariables extends EmailTemplateVariables {
 
 export interface SendEmailResponse {
   provider: string;
+  effectiveProvider: string;
+  requestedProvider: string;
+  fallbackReason?: string | null;
+  effectiveFrom?: string;
+  sendRecordId?: string;
   messageId: string;
   accepted: boolean;
   sentAt?: string;
@@ -128,6 +133,9 @@ export class EmailService {
       bcc: normalizeEmailList(request.bcc),
       subject: request.subject,
       emailProvider: response.provider,
+      effectiveEmailProvider: response.effectiveProvider,
+      emailFallbackReason: response.fallbackReason || null,
+      emailSendRecordId: response.sendRecordId || null,
       emailProviderMessageId: response.messageId,
     };
     const update: any = { ...metadata, lastEmail: metadata, updatedAt: sentAt };
