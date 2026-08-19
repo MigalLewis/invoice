@@ -7,6 +7,8 @@ export interface EmailSenderIdentity {
 
 export interface ProviderConnectionSettings {
   connected: boolean;
+  configured?: boolean;
+  health?: string;
   connectedAt?: any;
   connectedBy?: string;
   accountEmail?: string;

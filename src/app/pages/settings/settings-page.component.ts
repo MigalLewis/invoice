@@ -58,6 +58,7 @@ export class SettingsPageComponent {
   readonly message = signal('');
   readonly storage = signal<CompanyDocumentStorageSettings | null>(null);
   readonly emailSettings = signal<CompanyEmailSettings | null>(null);
+  readonly gmailConfigured = signal(false);
   readonly logoUrl = signal('');
   readonly signatureUrl = signal('');
   readonly signerName = signal('');
@@ -85,6 +86,7 @@ export class SettingsPageComponent {
 
   constructor() {
     this.loadSettings();
+    this.reportEmailOAuthResult();
   }
 
   selectTab(tab: SettingsTab): void {
@@ -238,10 +240,45 @@ export class SettingsPageComponent {
     }
   }
 
+  async connectEmailProvider(provider: 'gmail'): Promise<void> {
+    const companyId = this.companyId();
+    if (!companyId || !this.gmailConfigured()) return;
+    this.message.set('');
+    try {
+      const url = await this.emailService.connectEmailProvider(provider, companyId, this.emailForm.controls.gmailAccountEmail.value);
+      this.message.set('Opening secure Gmail authorization. Refresh tokens remain server-only.');
+      if (typeof window !== 'undefined') window.location.assign(url);
+    } catch (error: any) {
+      this.message.set(error?.message || 'Unable to start Gmail connection.');
+    }
+  }
+
+  async disconnectEmailProvider(provider: 'gmail'): Promise<void> {
+    const companyId = this.companyId();
+    if (!companyId) return;
+    try {
+      await this.emailService.disconnectEmailProvider(provider, companyId);
+      const current = this.emailSettings();
+      if (current) this.emailSettings.set({ ...current, gmail: { ...current.gmail, connected: false } });
+      this.message.set('Gmail disconnected and consent revoked.');
+    } catch (error: any) {
+      this.message.set(error?.message || 'Unable to disconnect Gmail.');
+    }
+  }
+
+  private reportEmailOAuthResult(): void {
+    if (typeof window === 'undefined') return;
+    const query = new URLSearchParams(window.location.search);
+    if (query.get('emailOAuth') !== 'gmail') return;
+    this.activeTab.set('email');
+    this.message.set(query.get('result') === 'success' ? 'Gmail connected successfully.' : `Gmail connection failed: ${query.get('reason') || 'unknown error'}.`);
+  }
+
   private loadSettings(): void {
     this.companyContext.currentCompanyId$().pipe(take(1)).subscribe(companyId => {
       this.companyId.set(companyId);
       if (!companyId) return;
+      this.emailService.providerConfiguration().then(configuration => this.gmailConfigured.set(configuration.gmail)).catch(() => this.gmailConfigured.set(false));
       this.loadCompany();
       this.storageService.getCompanySettings(companyId).pipe(take(1)).subscribe(settings => {
         this.storage.set(settings);
