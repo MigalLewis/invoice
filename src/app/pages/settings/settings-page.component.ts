@@ -17,6 +17,7 @@ import { CurrencyService } from '../../services/currency.service';
 import { DocumentStorageService } from '../../services/document-storage.service';
 import { EmailIntegrationService } from '../../services/email-integration.service';
 import { companyAccountPayload, emailSenderFor, folderMetadataFor } from './settings-page.logic';
+import { DEFAULT_BRAND_COLORS, brandColorsFrom } from '../../models/brand-colours.model';
 
 export type SettingsTab = 'account' | 'branding' | 'general' | 'storage' | 'email';
 
@@ -60,6 +61,11 @@ export class SettingsPageComponent {
   readonly logoUrl = signal('');
   readonly signatureUrl = signal('');
   readonly signerName = signal('');
+  readonly brandingForm = this.fb.nonNullable.group({
+    primary: [DEFAULT_BRAND_COLORS.primary],
+    secondary: [DEFAULT_BRAND_COLORS.secondary],
+    accent: [DEFAULT_BRAND_COLORS.accent]
+  });
 
   readonly accountForm = this.fb.nonNullable.group({
     name: ['', [Validators.required, Validators.minLength(2)]], regNo: [''], vatNo: [''], tel: [''],
@@ -152,6 +158,24 @@ export class SettingsPageComponent {
       this.message.set('Default signature uploaded and ready for templates.');
     } catch (error: any) {
       this.message.set(error?.message || 'Unable to upload signature.');
+    } finally {
+      this.savingBranding.set(false);
+    }
+  }
+
+  async saveBrandColors(): Promise<void> {
+    const companyId = this.companyId();
+    if (!companyId) return;
+    this.savingBranding.set(true);
+    this.message.set('');
+    try {
+      const brandColors = this.brandingForm.getRawValue();
+      await this.activityService.track(companyId, 'update', `companies/${companyId}`, 'Updated company brand colours.', () =>
+        updateDoc(doc(this.db, `companies/${companyId}`), { brandColors })
+      );
+      this.message.set('Brand colours saved. New templates will use them by default.');
+    } catch (error: any) {
+      this.message.set(error?.message || 'Unable to save brand colours.');
     } finally {
       this.savingBranding.set(false);
     }
@@ -262,6 +286,8 @@ export class SettingsPageComponent {
       this.logoUrl.set(company?.logoUrl || '');
       this.signatureUrl.set(company?.signature?.imageUrl || company?.signature?.url || company?.signatureUrl || '');
       this.signerName.set(company?.signature?.name || '');
+      const brandColors = brandColorsFrom(company?.brandColors) ?? DEFAULT_BRAND_COLORS;
+      this.brandingForm.setValue(brandColors);
     });
   }
 }

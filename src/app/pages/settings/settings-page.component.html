@@ -68,7 +68,16 @@
 
 <ng-template #brandingPanel>
   <section class="tab-panel section-panel" id="settings-panel-branding" role="tabpanel" aria-labelledby="settings-tab-branding">
-    <ng-container *ngTemplateOutlet="panelHeading; context: { eyebrow: 'Brand assets', title: 'Logo and signature', description: 'These images are automatically supplied to invoice and letter templates that include logo or signature variables.' }" />
+    <ng-template #brandingAction><button class="primary" type="button" (click)="saveBrandColors()" [disabled]="savingBranding() || !companyId()">{{ savingBranding() ? 'Saving…' : 'Save Branding' }}</button></ng-template>
+    <ng-container *ngTemplateOutlet="panelHeading; context: { eyebrow: 'Brand identity', title: 'Colours, logo and signature', description: 'Set reusable brand colours and images for consistent invoice, letter, and email templates.', action: brandingAction }" />
+    <form class="brand-colours-card" [formGroup]="brandingForm">
+      <div><h3>Brand colours</h3><p>These colours are selected by default when you create a ready-made template.</p></div>
+      <div class="brand-colour-fields">
+        <label><span>Primary</span><input type="color" formControlName="primary"><code>{{ brandingForm.controls.primary.value }}</code></label>
+        <label><span>Secondary</span><input type="color" formControlName="secondary"><code>{{ brandingForm.controls.secondary.value }}</code></label>
+        <label><span>Accent</span><input type="color" formControlName="accent"><code>{{ brandingForm.controls.accent.value }}</code></label>
+      </div>
+    </form>
     <div class="brand-grid">
       <app-image-upload title="Company logo" description="Used wherever a template includes the company logo." buttonLabel="Upload logo" previewAlt="Current company logo" variant="logo" [currentUrl]="logoUrl()" [busy]="savingBranding()" (upload)="uploadLogo($event)" />
       <app-image-upload title="Default signature" description="Used wherever a template includes an authorised signature." buttonLabel="Upload signature" previewAlt="Current default signature" variant="signature" [requireName]="true" nameLabel="Signer name" namePlaceholder="e.g. Alex Morgan" [currentName]="signerName()" [currentUrl]="signatureUrl()" [busy]="savingBranding()" (upload)="uploadSignature($event)" />
