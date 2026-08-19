@@ -6,6 +6,7 @@ import { from, Observable, switchMap } from 'rxjs';
 import { ActivityService } from './activity.service';
 import { CompanyEmailTemplateType, EmailTemplateVariables } from '../models/company-email-template.model';
 import { EmailTemplateService, validateRenderedEmail } from './email-template.service';
+import { EmailProvider } from '../models/email-integration.model';
 
 export type EmailDocumentType = 'invoice' | 'letter';
 export type InvoiceReminderType = 'beforeDue' | 'dueToday' | 'overdue';
@@ -23,6 +24,7 @@ export interface SendEmailRequest {
   documentType: EmailDocumentType;
   documentId: string;
   reminderType?: InvoiceReminderType;
+  provider?: EmailProvider;
   recipient: string;
   cc?: string[];
   bcc?: string[];

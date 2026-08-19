@@ -104,9 +104,9 @@ const { _test } = require('./index.js');
   });
   assert.strictEqual(validBucket.downloads, 1);
   const sendGridPayload = _test.buildSendGridPayload({
-    companyId: 'co', clientId: 'client', documentType: 'invoice', documentId: 'INV-1', recipient: 'client@example.com',
-    subject: 'Invoice', attachment: { storagePath: 'companies/co/generated/invoices/INV-1.pdf' }
-  }, 'billing@example.com', [{ type: 'text/plain', value: 'Attached' }], validAttachment);
+    to: ['client@example.com'], cc: [], bcc: [], subject: 'Invoice', text: 'Attached',
+    attachments: [validAttachment], sender: {}
+  }, 'billing@example.com', { companyId: 'co', documentId: 'INV-1' });
   assert.deepStrictEqual(sendGridPayload.attachments, [validAttachment]);
 
   await assert.rejects(

@@ -1,4 +1,5 @@
-export type EmailProvider = 'gmail' | 'microsoft_exchange' | 'sendgrid';
+export type EmailProvider = 'gmail' | 'microsoft_exchange' | 'company_sendgrid' | 'nexus_fallback';
+export type LegacyEmailProvider = 'sendgrid';
 
 export interface EmailSenderIdentity {
   email?: string;
@@ -26,18 +27,21 @@ export interface CompanyEmailSettings {
   gmail?: ProviderConnectionSettings;
   microsoftExchange?: ProviderConnectionSettings;
   sendgrid?: ProviderConnectionSettings;
+  nexusFallback?: { enabled: boolean; configured?: boolean };
   updatedAt?: any;
 }
 
 export const EMAIL_PROVIDER_LABELS: Record<EmailProvider, string> = {
   gmail: 'Google Workspace Gmail',
   microsoft_exchange: 'Microsoft 365 Exchange',
-  sendgrid: 'SendGrid',
+  company_sendgrid: 'Company SendGrid',
+  nexus_fallback: 'Nexus managed fallback',
 };
 
 export const DEFAULT_EMAIL_SETTINGS: Omit<CompanyEmailSettings, 'companyId'> = {
-  defaultProvider: 'gmail',
+  defaultProvider: 'nexus_fallback',
   gmail: { connected: false },
   microsoftExchange: { connected: false },
   sendgrid: { connected: false, apiKeyConfigured: false },
+  nexusFallback: { enabled: false, configured: false },
 };

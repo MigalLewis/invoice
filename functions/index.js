@@ -5,6 +5,7 @@ const admin = require('firebase-admin');
 const { randomUUID } = require('crypto');
 const { createGmailProvider } = require('./email/providers/gmail');
 const { createMicrosoftProvider } = require('./email/providers/microsoft');
+const { dispatchEmail } = require('./email/dispatcher');
 
 admin.initializeApp();
 
@@ -56,7 +57,7 @@ function normalizeEmailList(value) {
 }
 
 function resolveEmailProvider(requestedProvider, companyDefault) {
-  return requestedProvider || companyDefault || 'sendgrid';
+  return requestedProvider || companyDefault || 'nexus_fallback';
 }
 
 function validatePayload(data) {
@@ -143,6 +144,7 @@ async function assertCompanyMember(uid, companyId) {
   if (!isCompanyMember(uid, companyId, userCompanyId, users)) {
     throw new HttpsError('permission-denied', 'You are not a member of this company.');
   }
+  return companySnap;
 }
 
 const APPROVED_TEMPLATE_VARIABLES = new Set(['clientName', 'invoiceNumber', 'dueDate', 'total', 'companyName', 'paymentReference', 'outstandingBalance', 'daysOverdue', 'company.name', 'company.email', 'company.phone', 'company.address', 'company.logoUrl', 'signature.name', 'signature.imageUrl', 'client.name', 'client.email', 'invoice.number', 'invoice.date', 'invoice.dueDate', 'invoice.subtotal', 'invoice.vat', 'invoice.total', 'invoice.outstandingBalance', 'invoice.daysOverdue']);
@@ -194,36 +196,27 @@ async function buildEmailContent(data) {
     : [{ type: 'text/plain', value: data.messageBody }];
 }
 
-function buildSendGridPayload(data, fromEmail, content, attachment) {
+function buildSendGridPayload(message, fromEmail, metadata) {
   return {
     personalizations: [{
-      to: [{ email: data.recipient }],
-      cc: normalizeEmailList(data.cc).map(email => ({ email })),
-      bcc: normalizeEmailList(data.bcc).map(email => ({ email })),
+      to: message.to.map(email => ({ email })),
+      cc: message.cc.map(email => ({ email })),
+      bcc: message.bcc.map(email => ({ email })),
     }],
-    from: { email: fromEmail },
-    subject: data.subject,
-    content,
-    attachments: [attachment],
-    custom_args: {
-      companyId: data.companyId,
-      clientId: data.clientId,
-      documentType: data.documentType,
-      documentId: data.documentId,
-      storagePath: data.attachment.storagePath,
-    },
+    from: { email: message.sender.email || fromEmail, name: message.sender.displayName || undefined },
+    subject: message.subject,
+    content: [{ type: 'text/plain', value: message.text }, ...(message.html ? [{ type: 'text/html', value: message.html }] : [])],
+    attachments: message.attachments,
+    custom_args: metadata,
   };
 }
 
-async function sendWithSendGrid(data) {
-  const apiKey = sendGridApiKey.value();
-  const fromEmail = sendGridFromEmail.value();
+async function sendWithSendGrid(message, credentials, metadata) {
+  const apiKey = credentials.apiKey;
+  const fromEmail = credentials.fromEmail;
   if (!apiKey || !fromEmail) {
     throw new HttpsError('failed-precondition', 'Email provider secrets are not configured.');
   }
-
-  const content = await buildEmailContent(data);
-  const attachment = await resolveEmailAttachment(data);
 
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
@@ -231,7 +224,7 @@ async function sendWithSendGrid(data) {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(buildSendGridPayload(data, fromEmail, content, attachment)),
+    body: JSON.stringify(buildSendGridPayload(message, fromEmail, metadata)),
   });
 
   if (!response.ok) {
@@ -241,6 +234,28 @@ async function sendWithSendGrid(data) {
   return response.headers.get('x-message-id') || `sendgrid-${Date.now()}`;
 }
 
+async function sendWithGmail(message) {
+  try { return await gmailProvider().send(message.sender.companyId, message); }
+  catch (error) { throw new HttpsError(error.message === 'not_connected' ? 'failed-precondition' : 'internal', `Gmail send failed: ${error.message}`); }
+}
+
+async function sendWithMicrosoftGraph(message, integrations) {
+  try { return await microsoftEmailProvider().send(message.sender.companyId, message, integrations.selectedSender); }
+  catch (error) {
+    const expected = ['not_connected', 'expired_consent', 'tenant_not_allowed', 'sender_not_authorized'];
+    throw new HttpsError(expected.includes(error.message) ? 'failed-precondition' : error.message === 'graph_throttled' ? 'resource-exhausted' : 'internal', `Microsoft Graph send failed: ${error.message}`);
+  }
+}
+
+async function sendWithCompanySendGrid(message, integrations) {
+  const settings = integrations.sendgrid || {};
+  return sendWithSendGrid(message, { apiKey: settings.apiKey, fromEmail: settings.fromEmail }, message.sender.metadata);
+}
+
+async function sendWithNexusFallback(message) {
+  return sendWithSendGrid(message, { apiKey: sendGridApiKey.value(), fromEmail: sendGridFromEmail.value() }, message.sender.metadata);
+}
+
 const microsoftEmailSecrets = [microsoftEmailClientId, microsoftEmailClientSecret, microsoftEmailRedirectUri, microsoftEmailAllowedTenants];
 
 exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail, gmailClientId, gmailClientSecret, gmailRedirectUri, ...microsoftEmailSecrets] }, async request => {
@@ -248,44 +263,33 @@ exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail
   const data = request.data || {};
   const errors = validatePayload(data);
   if (errors.length) throw new HttpsError('invalid-argument', errors.join('; '));
-  await assertCompanyMember(request.auth.uid, data.companyId);
-  const company = (await admin.firestore().doc(`companies/${data.companyId}`).get()).data() || {};
-  const provider = resolveEmailProvider(data.provider, company.emailIntegrations?.defaultProvider);
-  let messageId;
-  if (provider === 'gmail') {
-    const content = await buildEmailContent(data);
-    const attachment = await resolveEmailAttachment(data);
-    const text = content.find(item => item.type === 'text/plain')?.value || '';
-    const html = content.find(item => item.type === 'text/html')?.value;
-    try {
-      messageId = await gmailProvider().send(data.companyId, { to: [data.recipient], cc: normalizeEmailList(data.cc), bcc: normalizeEmailList(data.bcc), subject: data.subject, text, html, attachments: [attachment] });
-    } catch (error) {
-      throw new HttpsError(error.message === 'not_connected' ? 'failed-precondition' : 'internal', `Gmail send failed: ${error.message}`);
-    }
-  } else if (provider === 'microsoft_exchange') {
-    const content = await buildEmailContent(data);
-    const attachment = await resolveEmailAttachment(data);
-    const text = content.find(item => item.type === 'text/plain')?.value || '';
-    const html = content.find(item => item.type === 'text/html')?.value;
-    try {
-      messageId = await microsoftEmailProvider().send(data.companyId, { to: [data.recipient], cc: normalizeEmailList(data.cc), bcc: normalizeEmailList(data.bcc), subject: data.subject, text, html, attachments: [attachment] }, company.emailIntegrations?.selectedSender);
-    } catch (error) {
-      const expected = ['not_connected', 'expired_consent', 'tenant_not_allowed', 'sender_not_authorized'];
-      throw new HttpsError(expected.includes(error.message) ? 'failed-precondition' : error.message === 'graph_throttled' ? 'resource-exhausted' : 'internal', `Microsoft Graph send failed: ${error.message}`);
-    }
-  } else if (provider === 'sendgrid') {
-    messageId = await sendWithSendGrid(data);
-  } else {
-    throw new HttpsError('failed-precondition', `Email provider ${provider} is not available.`);
-  }
-  return { provider, messageId, accepted: true, sentAt: new Date().toISOString() };
+  const companySnap = await assertCompanyMember(request.auth.uid, data.companyId);
+  const company = companySnap.data() || {};
+  const integrations = company.emailIntegrations || {};
+  const content = await buildEmailContent(data);
+  const message = {
+    to: [data.recipient], cc: normalizeEmailList(data.cc), bcc: normalizeEmailList(data.bcc),
+    subject: data.subject,
+    text: content.find(item => item.type === 'text/plain')?.value || '',
+    html: content.find(item => item.type === 'text/html')?.value,
+    attachments: [await resolveEmailAttachment(data)],
+    sender: { ...integrations.selectedSender, companyId: data.companyId, metadata: {
+      companyId: data.companyId, clientId: data.clientId, documentType: data.documentType,
+      documentId: data.documentId, storagePath: data.attachment.storagePath,
+    } },
+  };
+  return dispatchEmail({
+    requestedProvider: data.provider, integrations, message,
+    configuration: { gmail: gmailProvider().configured(), microsoftExchange: microsoftEmailProvider().configured(), nexusFallback: !!sendGridApiKey.value() && !!sendGridFromEmail.value() },
+    adapters: { gmail: sendWithGmail, microsoft_exchange: sendWithMicrosoftGraph, company_sendgrid: sendWithCompanySendGrid, nexus_fallback: sendWithNexusFallback },
+  });
 });
 
 const gmailSecrets = [gmailClientId, gmailClientSecret, gmailRedirectUri];
 
-exports.getEmailProviderConfiguration = onCall({ secrets: [...gmailSecrets, ...microsoftEmailSecrets] }, async request => {
+exports.getEmailProviderConfiguration = onCall({ secrets: [...gmailSecrets, ...microsoftEmailSecrets, sendGridApiKey, sendGridFromEmail] }, async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in is required.');
-  return { gmail: gmailProvider().configured(), microsoftExchange: microsoftEmailProvider().configured(), microsoftTenantPolicy: microsoftEmailProvider().tenantPolicy().mode };
+  return { gmail: gmailProvider().configured(), microsoftExchange: microsoftEmailProvider().configured(), nexusFallback: !!sendGridApiKey.value() && !!sendGridFromEmail.value(), microsoftTenantPolicy: microsoftEmailProvider().tenantPolicy().mode };
 });
 
 exports.startGmailOAuth = onCall({ secrets: gmailSecrets }, async request => {
