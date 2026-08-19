@@ -70,6 +70,9 @@ function validatePayload(data) {
   if (!data.clientId) errors.push('clientId is required');
   if (data.documentType !== 'invoice' && data.documentType !== 'letter') errors.push('documentType must be invoice or letter');
   if (!data.documentId) errors.push('documentId is required');
+  for (const [field, value] of [['companyId', data.companyId], ['clientId', data.clientId], ['documentId', data.documentId]]) {
+    if (value && !/^[A-Za-z0-9_-]{1,128}$/.test(String(value))) errors.push(`${field} is invalid`);
+  }
   if (!EMAIL_PATTERN.test(data.recipient || '')) errors.push('recipient email is invalid');
   for (const email of [...normalizeEmailList(data.cc), ...normalizeEmailList(data.bcc)]) {
     if (!EMAIL_PATTERN.test(email)) errors.push(`copy recipient is invalid: ${email}`);
@@ -80,6 +83,43 @@ function validatePayload(data) {
   if (data.attachment?.generatedDocumentPayloadRef) errors.push('attachment.generatedDocumentPayloadRef is not supported; provide attachment.storagePath');
   if (!data.attachment?.storagePath) errors.push('attachment.storagePath is required');
   return errors;
+}
+
+const DOCUMENT_COLLECTIONS = Object.freeze({ invoice: 'invoices', letter: 'letters' });
+
+async function loadEmailDocument(data, db = admin.firestore()) {
+  const collection = DOCUMENT_COLLECTIONS[data.documentType];
+  if (!collection) throw new HttpsError('invalid-argument', 'documentType must be invoice or letter');
+  const path = `companies/${data.companyId}/clients/${data.clientId}/${collection}/${data.documentId}`;
+  const snapshot = await db.doc(path).get();
+  if (!snapshot.exists) throw new HttpsError('not-found', 'The requested document was not found for this client.');
+  const record = snapshot.data() || {};
+  const expected = { companyId: String(data.companyId), clientId: String(data.clientId), documentType: data.documentType, documentId: String(data.documentId) };
+  const aliases = { documentId: record.documentId ?? record.id, documentType: record.documentType ?? record.type };
+  for (const [field, expectedValue] of Object.entries(expected)) {
+    const actual = field in aliases ? aliases[field] : record[field];
+    if (actual !== undefined && String(actual) !== expectedValue) {
+      throw new HttpsError('failed-precondition', `The stored document ${field} does not match its location.`);
+    }
+  }
+  return { ...expected, record, path };
+}
+
+function documentAttachmentPaths(record) {
+  const values = [record.attachmentStoragePath, record.storagePath, record.documentStoragePath, record.filePath];
+  const outputs = Array.isArray(record.generatedOutputs) ? record.generatedOutputs : [];
+  for (const output of outputs) values.push(typeof output === 'string' ? output : output?.storagePath);
+  return new Set(values.filter(value => typeof value === 'string' && value));
+}
+
+function documentAttachmentFilename(record, storagePath) {
+  const output = (Array.isArray(record.generatedOutputs) ? record.generatedOutputs : [])
+    .find(value => typeof value === 'object' && value?.storagePath === storagePath);
+  if (output?.fileName) return output.fileName;
+  if ([record.attachmentStoragePath, record.storagePath, record.documentStoragePath, record.filePath].includes(storagePath)) {
+    return record.attachmentFileName || record.fileName;
+  }
+  return undefined;
 }
 
 function validateAttachmentPath(companyId, storagePath) {
@@ -104,12 +144,16 @@ function validatedAttachmentFilename(requestedName, storagePath) {
   return name;
 }
 
-async function resolveEmailAttachment(data, bucket = admin.storage().bucket()) {
+async function resolveEmailAttachment(data, document, bucket = admin.storage().bucket()) {
   const attachment = data.attachment || {};
   if (attachment.generatedDocumentPayloadRef) {
     throw new HttpsError('invalid-argument', 'attachment.generatedDocumentPayloadRef is not supported; generated documents must first be stored in company-scoped Storage.');
   }
-  const storagePath = validateAttachmentPath(data.companyId, attachment.storagePath);
+  if (!document?.record) throw new HttpsError('failed-precondition', 'A loaded document is required to resolve an attachment.');
+  const storagePath = validateAttachmentPath(document.companyId, attachment.storagePath);
+  if (!documentAttachmentPaths(document.record).has(storagePath)) {
+    throw new HttpsError('permission-denied', 'The attachment is not an output recorded on the requested document.');
+  }
   const file = bucket.file(storagePath);
   let metadata;
   try {
@@ -127,7 +171,7 @@ async function resolveEmailAttachment(data, bucket = admin.storage().bucket()) {
   if (!Buffer.isBuffer(bytes) || bytes.length !== declaredSize) throw new HttpsError('failed-precondition', 'Attachment size does not match its Storage metadata.');
   if (bytes.length > MAX_ATTACHMENT_BYTES) throw new HttpsError('invalid-argument', 'Attachment exceeds the email provider size limit.');
   return {
-    filename: validatedAttachmentFilename(attachment.fileName, storagePath),
+    filename: validatedAttachmentFilename(documentAttachmentFilename(document.record, storagePath), storagePath),
     type,
     disposition: 'attachment',
     content: bytes.toString('base64'),
@@ -379,6 +423,7 @@ exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail
   const errors = validatePayload(data);
   if (errors.length) throw new HttpsError('invalid-argument', errors.join('; '));
   const companySnap = await assertCompanyMember(request.auth.uid, data.companyId);
+  const document = await loadEmailDocument(data);
   const company = companySnap.data() || {};
   const integrations = await companyEmailIntegrations(data.companyId);
   if (integrations.onboardingCompleted !== true) {
@@ -401,17 +446,19 @@ exports.sendDocumentEmail = onCall({ secrets: [sendGridApiKey, sendGridFromEmail
     subject: data.subject,
     text: content.find(item => item.type === 'text/plain')?.value || '',
     html: content.find(item => item.type === 'text/html')?.value,
-    attachments: [await resolveEmailAttachment(data)],
-    sender: { ...integrations.selectedSender, companyName: company.name, replyToEmail, companyId: data.companyId, metadata: {
-      companyId: data.companyId, clientId: data.clientId, documentType: data.documentType,
-      documentId: data.documentId, storagePath: data.attachment.storagePath,
+    attachments: [await resolveEmailAttachment(data, document)],
+    sender: { ...integrations.selectedSender, companyName: company.name, replyToEmail, companyId: document.companyId, metadata: {
+      companyId: document.companyId, clientId: document.clientId, documentType: document.documentType,
+      documentId: document.documentId, storagePath: data.attachment.storagePath,
     } },
   };
   const recordRef = admin.firestore().collection(`companies/${data.companyId}/emailSendRecords`).doc();
   const audit = {
     requestedProvider: route.requestedProvider, effectiveProvider: route.provider,
     fallbackReason: route.fallbackReason, recipientHash: recipientHash(data.recipient),
-    documentType: data.documentType, documentId: data.documentId, sentBy: request.auth.uid,
+    companyId: document.companyId, clientId: document.clientId,
+    documentType: document.documentType, documentId: document.documentId, documentPath: document.path,
+    attachmentStoragePath: data.attachment.storagePath, sentBy: request.auth.uid,
     createdAt: admin.firestore.FieldValue.serverTimestamp(), status: 'attempting',
   };
   await recordRef.set(audit);
@@ -1030,10 +1077,14 @@ exports.generatePdfDocument = onCall({ memory: '1GiB', timeoutSeconds: 120 }, as
     const clientSegment = sanitizePathSegment(data.clientId || data.clientName, 'client');
     const documentSegment = sanitizePathSegment(data.documentId, data.documentType);
     const fileName = `${documentSegment}.pdf`;
-    const storagePath = `companies/${data.companyId}/clients/${clientSegment}/${data.documentType}s/${documentSegment}/generated/${fileName}`;
+    const storagePath = `companies/${data.companyId}/generated/${clientSegment}/${data.documentType}s/${documentSegment}/${fileName}`;
     const bucket = admin.storage().bucket();
     const downloadToken = randomUUID();
     await bucket.file(storagePath).save(pdf, { metadata: { contentType: 'application/pdf', metadata: { provider, templateId: templateDoc.id, templateFormat: format, firebaseStorageDownloadTokens: downloadToken } } });
+    const documentPath = `companies/${data.companyId}/clients/${data.clientId}/${DOCUMENT_COLLECTIONS[data.documentType]}/${data.documentId}`;
+    await admin.firestore().doc(documentPath).set({
+      generatedOutputs: admin.firestore.FieldValue.arrayUnion({ storagePath, fileName, mimeType: 'application/pdf', provider, templateId: templateDoc.id }),
+    }, { merge: true });
     // Signed URLs require the runtime service account to have signBlob permission.
     // Firebase download tokens work with the Storage client and avoid turning an
     // otherwise successful PDF render into a 500 when that IAM role is absent.
@@ -1046,4 +1097,4 @@ exports.generatePdfDocument = onCall({ memory: '1GiB', timeoutSeconds: 120 }, as
   }
 });
 
-module.exports._test = { validatePayload, validateAttachmentPath, validatedAttachmentFilename, resolveEmailAttachment, buildSendGridPayload, MAX_ATTACHMENT_BYTES, renderFreeMarkerTemplate, renderDocumentTemplate, buildTemplateVariables, formatPhoneNumber, htmlToText, normalizeEmailList, buildEmailContent, isCompanyMember, resolveEmailProvider, validatePdfAnalysisRequest, buildPdfMapping, validatePdfVariables, generatedPdfMetadata, validatePdfGenerationRequest, sanitizePathSegment, minimalPdfBuffer, firebaseStorageDownloadUrl };
+module.exports._test = { validatePayload, validateAttachmentPath, validatedAttachmentFilename, loadEmailDocument, documentAttachmentPaths, documentAttachmentFilename, resolveEmailAttachment, buildSendGridPayload, MAX_ATTACHMENT_BYTES, renderFreeMarkerTemplate, renderDocumentTemplate, buildTemplateVariables, formatPhoneNumber, htmlToText, normalizeEmailList, buildEmailContent, isCompanyMember, resolveEmailProvider, validatePdfAnalysisRequest, buildPdfMapping, validatePdfVariables, generatedPdfMetadata, validatePdfGenerationRequest, sanitizePathSegment, minimalPdfBuffer, firebaseStorageDownloadUrl };
