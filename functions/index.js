@@ -1046,7 +1046,7 @@ function buildTemplateVariables(data) {
   const includeVat = payload.includeVat ?? payload.shouldIncludeVAT ?? false;
   const vatNumber = includeVat ? subtotalNumber * 0.15 : 0;
   const money = value => `R ${Number(value || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const signature = company.signature || {};
+  const signature = payload.includeSignature === false ? {} : (company.signature || {});
   const signatureUrl = signature.imageUrl || signature.url || company.signatureUrl || '';
   const companyAddressSource = typeof company.address === 'object' && company.address ? company.address : {};
   const companyAddressText = typeof company.address === 'string'
@@ -1093,7 +1093,7 @@ function buildTemplateVariables(data) {
     },
     letter: {
       title: payload.title || data.documentId,
-      message: payload.message || '',
+      message: sanitizeLetterMessageHtml(payload.message || ''),
       date: new Date().toISOString().slice(0, 10),
       signedBy: payload.signedBy || signature.name || '',
       signatureUrl: payload.signatureUrl || signatureUrl,
@@ -1123,6 +1123,20 @@ function buildTemplateVariables(data) {
 
 function escapeTemplateHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+}
+
+function sanitizeLetterMessageHtml(value) {
+  return String(value || '')
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
+    .replace(/<!--([\s\S]*?)-->/g, '')
+    .replace(/<\/?([a-z][a-z0-9]*)\b([^>]*)>/gi, (tag, name, attributes) => {
+      const lower = name.toLowerCase();
+      if (!['b', 'strong', 'i', 'em', 'u', 'span', 'div', 'p', 'br'].includes(lower)) return '';
+      if (tag.startsWith('</')) return lower === 'br' ? '' : `</${lower}>`;
+      if (lower !== 'span') return `<${lower}>`;
+      const colour = String(attributes).match(/style\s*=\s*["'][^"']*color\s*:\s*(#[0-9a-f]{3,8}|rgb\([\d\s,.%]+\)|[a-z]+)[^"']*["']/i)?.[1];
+      return colour ? `<span style="color:${colour}">` : '<span>';
+    });
 }
 
 function renderDocumentConditionals(source, variables) {
@@ -1275,4 +1289,4 @@ exports.generatePdfDocument = onCall({ memory: '1GiB', timeoutSeconds: 120 }, as
   }
 });
 
-module.exports._test = { validatePayload, validateAttachmentPath, validatedAttachmentFilename, loadEmailDocument, documentAttachmentPaths, documentAttachmentFilename, resolveEmailAttachment, buildSendGridPayload, MAX_ATTACHMENT_BYTES, renderFreeMarkerTemplate, renderDocumentTemplate, buildTemplateVariables, formatPhoneNumber, htmlToText, normalizeEmailList, buildEmailContent, isCompanyMember, resolveEmailProvider, validatePdfAnalysisRequest, buildPdfMapping, validatePdfVariables, generatedPdfMetadata, validatePdfGenerationRequest, sanitizePathSegment, minimalPdfBuffer, firebaseStorageDownloadUrl, cadenceDate, reminderDedupKey, reminderQueueId, overdueReminderPolicy, replaceReminderVariables, retryableReminderError, reminderFailureUpdate, enqueueOverdueReminders, claimReminderJob, buildReminderMessage, processReminderJob, completeReminderJob, REMINDER_MAX_ATTEMPTS };
+module.exports._test = { validatePayload, validateAttachmentPath, validatedAttachmentFilename, loadEmailDocument, documentAttachmentPaths, documentAttachmentFilename, resolveEmailAttachment, buildSendGridPayload, MAX_ATTACHMENT_BYTES, renderFreeMarkerTemplate, renderDocumentTemplate, buildTemplateVariables, sanitizeLetterMessageHtml, formatPhoneNumber, htmlToText, normalizeEmailList, buildEmailContent, isCompanyMember, resolveEmailProvider, validatePdfAnalysisRequest, buildPdfMapping, validatePdfVariables, generatedPdfMetadata, validatePdfGenerationRequest, sanitizePathSegment, minimalPdfBuffer, firebaseStorageDownloadUrl, cadenceDate, reminderDedupKey, reminderQueueId, overdueReminderPolicy, replaceReminderVariables, retryableReminderError, reminderFailureUpdate, enqueueOverdueReminders, claimReminderJob, buildReminderMessage, processReminderJob, completeReminderJob, REMINDER_MAX_ATTEMPTS };

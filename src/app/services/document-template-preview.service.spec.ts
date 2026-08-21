@@ -32,4 +32,13 @@ describe('DocumentTemplatePreviewService', () => {
     expect(html).toContain('Nexus House');
     expect(html).toContain('R 13,800.00');
   });
+
+  it('renders meaningful sample data for letter templates', () => {
+    const html = service.buildHtml('<time>${letter.date?html}</time><h1>${letter.title?html}</h1><article>${letter.message?html}</article><b>${letter.signedBy?html}</b>');
+
+    expect(html).toContain('6 August 2026');
+    expect(html).toContain('Project update and next steps');
+    expect(html).toContain('Thank you for partnering with Pacifish Consulting.');
+    expect(html).toContain('Mia Daniels');
+  });
 });
