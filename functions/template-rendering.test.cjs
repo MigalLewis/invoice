@@ -29,6 +29,10 @@ const { _test } = require('./index.js');
   assert.strictEqual(richLetter.letter.message, '<b>Bold</b> <span style="color:#c00">red</span>');
   assert.strictEqual(richLetter.letter.signatureUrl, '');
   assert.strictEqual(richLetter.letter.signedBy, '');
+  assert.strictEqual(
+    _test.renderDocumentTemplate('<article>${letter.message?html}</article>', richLetter),
+    '<article><b>Bold</b> <span style="color:#c00">red</span></article>'
+  );
 
   const addressVariables = _test.buildTemplateVariables({
     documentId: 'INV-ADDRESS',

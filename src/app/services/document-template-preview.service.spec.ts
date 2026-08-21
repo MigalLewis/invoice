@@ -41,4 +41,13 @@ describe('DocumentTemplatePreviewService', () => {
     expect(html).toContain('Thank you for partnering with Pacifish Consulting.');
     expect(html).toContain('Mia Daniels');
   });
+
+  it('renders sanitised letter message formatting in legacy templates that use ?html', () => {
+    const html = service.buildHtml('<article>${letter.message?html}</article>', {
+      'letter.message': '<b>Bold</b> <i>italic</i> <u>underlined</u>'
+    });
+
+    expect(html).toContain('<article><b>Bold</b> <i>italic</i> <u>underlined</u></article>');
+    expect(html).not.toContain('&lt;b&gt;');
+  });
 });

@@ -8,10 +8,13 @@ import { CompanyTemplate } from '../../models/invoice.model';
 import { LetterSignature } from '../../models/letter.model';
 import { ClientService } from '../../services/client.service';
 import { LetterDocxService } from '../../services/letter-docx.service';
+import { DocumentTemplatePreviewService } from '../../services/document-template-preview.service';
+import { TemplateService } from '../../services/template.service';
 import { normalizeTemplateFormat } from '../../services/template-renderer.service';
 import { DialogShellComponent } from '../dialog-shell/dialog-shell.component';
+import { TemplatePreviewFrameComponent } from '../template-preview-frame/template-preview-frame.component';
 
-@Component({ selector: 'app-add-letter-dialog', standalone: true, imports: [CommonModule, ReactiveFormsModule, DialogModule, DialogShellComponent], templateUrl: './add-letter-dialog.component.html', styleUrl: './add-letter-dialog.component.scss' })
+@Component({ selector: 'app-add-letter-dialog', standalone: true, imports: [CommonModule, ReactiveFormsModule, DialogModule, DialogShellComponent, TemplatePreviewFrameComponent], templateUrl: './add-letter-dialog.component.html', styleUrl: './add-letter-dialog.component.scss' })
 export class AddLetterDialogComponent {
   @ViewChild('messageEditor') private messageEditor?: ElementRef<HTMLElement>;
   private readonly fb = inject(FormBuilder);
@@ -20,12 +23,17 @@ export class AddLetterDialogComponent {
   private readonly letterDocx = inject(LetterDocxService);
   private readonly clientSvc = inject(ClientService);
   private readonly db = inject(Firestore);
+  private readonly templateService = inject(TemplateService);
+  private readonly documentPreview = inject(DocumentTemplatePreviewService);
 
   readonly saving = signal(false);
   readonly error = signal<string | null>(null);
   readonly letterTemplates = signal<CompanyTemplate[]>([]);
   readonly templatesLoading = signal(true);
   readonly defaultSignature = signal<LetterSignature | null>(null);
+  readonly previewHtml = signal<string | null>(null);
+  readonly previewBusy = signal(false);
+  readonly company = signal<any>(null);
   readonly client = this.data?.client;
   readonly clientId = this.data?.clientId;
   readonly companyId = typeof this.data?.companyId === 'function' ? this.data?.companyId() : this.data?.companyId;
@@ -70,6 +78,43 @@ export class AddLetterDialogComponent {
     if (!editor) return;
     const html = this.sanitizeMessage(editor.innerHTML);
     this.form.controls.message.setValue(editor.innerText.trim() ? html : '');
+  }
+
+  async previewLetter(): Promise<void> {
+    this.syncMessage();
+    const value = this.form.getRawValue();
+    const template = this.letterTemplates().find(candidate => candidate.id === value.templateId);
+    if (!template) { this.error.set('Select a letter template to preview.'); return; }
+    if (normalizeTemplateFormat(template) !== 'freemarker-html') {
+      this.error.set('Preview is available for ready-made PDF templates. Word templates are previewed after generation.');
+      return;
+    }
+    const path = template.bodyStoragePath || template.storagePath;
+    if (!path) return;
+    this.previewBusy.set(true);
+    this.error.set(null);
+    try {
+      const source = await this.templateService.getTemplateSource(path);
+      const address = this.client?.address || {};
+      const company = this.company() || {};
+      const companyAddress = company.address || {};
+      const signature = value.includeSignature === 'yes' ? this.defaultSignature() : null;
+      this.previewHtml.set(this.documentPreview.buildHtml(source, {
+        'letter.title': value.title || 'Untitled letter', 'letter.message': this.sanitizeMessage(value.message || ''),
+        'letter.date': new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' }),
+        'letter.signedBy': signature?.name || '', 'letter.signatureUrl': signature?.url || '',
+        'company.name': company.name || '', 'company.email': company.email || '', 'company.phone': company.phone || company.tel || '',
+        'company.website': company.website || '', 'company.logoUrl': company.logoUrl || '',
+        'company.address': typeof companyAddress === 'string' ? companyAddress : [companyAddress.line1, companyAddress.line2, companyAddress.suburb, companyAddress.city, companyAddress.postalCode].filter(Boolean).join(', '),
+        'client.name': this.client?.displayName || this.client?.name || '', 'client.email': this.client?.email || '',
+        'client.address.line1': address.line1 || '', 'client.address.suburb': address.suburb || '',
+        'client.address.city': address.city || '', 'client.address.postalCode': address.postalCode || ''
+      }));
+    } catch (error: any) {
+      this.error.set(error?.message || 'Unable to preview this letter.');
+    } finally {
+      this.previewBusy.set(false);
+    }
   }
 
   generateLetter(): void {
@@ -117,6 +162,7 @@ export class AddLetterDialogComponent {
       error: () => { this.templatesLoading.set(false); this.error.set('Unable to load letter templates.'); }
     });
     docData(doc(this.db, `companies/${this.companyId}`)).pipe(take(1)).subscribe((company: any) => {
+      this.company.set(company);
       const stored = company?.signature;
       const url = stored?.imageUrl || stored?.url || company?.signatureUrl || '';
       if (!url) return;

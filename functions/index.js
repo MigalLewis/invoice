@@ -1165,7 +1165,9 @@ function renderDocumentTemplate(source, variables) {
     const path = expression.match(/[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+/)?.[0];
     const value = path ? lookupVariable(scope, path) : undefined;
     const resolved = value === undefined || value === null || value === '' ? fallback : value;
-    return expression.includes('?html') ? escapeTemplateHtml(resolved) : String(resolved);
+    // letter.message is sanitised in buildTemplateVariables and intentionally
+    // remains rich HTML, including for older templates that used `?html`.
+    return expression.includes('?html') && path !== 'letter.message' ? escapeTemplateHtml(resolved) : String(resolved);
   });
   let html = renderDocumentConditionals(String(source || ''), variables);
   html = html.replace(/<#list\s+([a-zA-Z0-9_.]+)\s+as\s+([a-zA-Z0-9_]+)>([\s\S]*?)<\/#list>/g, (_, path, alias, body) => {
