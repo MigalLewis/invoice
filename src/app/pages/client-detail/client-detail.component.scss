@@ -1,0 +1,12 @@
+.projects-workspace { display: grid; gap: 1.5rem; }
+.project-form { display: grid; grid-template-columns: 2fr 3fr 1fr auto; gap: 1rem; align-items: end; }
+.project-form label { display: grid; gap: .4rem; }
+.project-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+.project-card { text-align: left; cursor: pointer; color: inherit; }
+.project-card.selected { outline: 2px solid var(--primary, #2563eb); }
+.project-title { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.project-card dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; margin: 1rem 0 0; }
+.project-card dl div { display: grid; gap: .25rem; }
+.project-card dt { color: #64748b; font-size: .75rem; }
+.project-card dd { margin: 0; font-weight: 700; }
+@media (max-width: 800px) { .project-form { grid-template-columns: 1fr; } }

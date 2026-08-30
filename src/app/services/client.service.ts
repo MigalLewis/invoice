@@ -86,6 +86,7 @@ export function buildInvoiceSummaryRecord(
   return withoutUndefined({
     id: invoiceId,
     clientId,
+    projectId: invoice.projectId,
     invoiceNumber: invoice.invoiceNumber,
     date: invoice.date,
     filename: invoice.filename,

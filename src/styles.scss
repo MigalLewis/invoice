@@ -69,13 +69,16 @@ a { color: inherit; }
 .search-box .icon-glyph { color: var(--primary); font-size: 19px; }
 
 .dlg-backdrop { background: rgba(8,18,28,0.45) !important; }
+.invoice-dialog-panel.cdk-overlay-pane {
+  width: min(900px, calc(100vw - 32px));
+  max-width: none !important;
+}
 .dlg-panel .cdk-dialog-container{
   padding: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
-  display: grid;
-  place-items: center;
-  min-height: 100svh;
+  display: block;
+  width: 100%;
 }
 
 .primary, .secondary, .ghost, button.danger {

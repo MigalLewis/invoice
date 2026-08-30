@@ -8,6 +8,7 @@ export interface Expense {
   amount: number;
   notes?: string;
   clientId?: string | null; // present for legacy records and client subcollection records during migration
+  projectId?: string | null;
   source?: 'company' | 'client' | 'legacyCompanyClient';
   createdAt?: any;
 }

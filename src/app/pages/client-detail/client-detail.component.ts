@@ -30,6 +30,8 @@ import { EmptyStateComponent } from '../../components/empty-state/empty-state.co
 import { LoadingStateComponent } from '../../components/loading-state/loading-state.component';
 import { WorkspaceShellComponent } from '../../components/workspace-shell/workspace-shell.component';
 import { clientFormattedAddress, clientInitials, clientStatusClass, clientTypeLabel } from './client-summary.presenter';
+import { Project, ProjectStatus } from '../../models/project.model';
+import { ProjectService } from '../../services/project.service';
 
 @Component({
   selector: 'app-client-detail',
@@ -50,6 +52,7 @@ export class ClientDetailComponent {
   private notifications = inject(NotificationService);
   private emailService = inject(EmailService);
   private fb = inject(FormBuilder);
+  private projectService = inject(ProjectService);
   
   companyId = signal<string | null>(null);
   clientId = signal<string | null>(null);
@@ -57,6 +60,9 @@ export class ClientDetailComponent {
   invoices = signal<InvoiceRecord[]>([]);
   letters = signal<any[]>([]);
   expenses = signal<Expense[]>([]);
+  projects = signal<Project[]>([]);
+  selectedProjectId = signal<string | null>(null);
+  creatingProject = signal(false);
   lastInvoice = signal<any | null>(null);
   loading = signal(true);
   currency = signal(this.currencyService.defaultCurrency);
@@ -77,6 +83,7 @@ export class ClientDetailComponent {
     { id: 'documents', label: 'Documents' },
     { id: 'invoices', label: 'Invoices' },
     { id: 'expenses', label: 'Expenses' },
+    { id: 'projects', label: 'Projects' },
     { id: 'letters', label: 'Letters' }
   ];
 
@@ -103,9 +110,19 @@ export class ClientDetailComponent {
     notes: ['']
   });
 
+  projectForm = this.fb.nonNullable.group({
+    name: ['', [Validators.required, Validators.minLength(2)]],
+    description: [''],
+    status: ['active' as ProjectStatus, Validators.required]
+  });
+
   clientExpenseTotal = computed(() =>
     this.expenses().reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0)
   );
+  clientInvoicedTotal = computed(() =>
+    this.invoices().reduce((sum, invoice) => sum + (Number(invoice.total) || 0), 0)
+  );
+  clientNetTotal = computed(() => this.clientInvoicedTotal() - this.clientExpenseTotal());
 
   constructor() {
     this.route.paramMap.subscribe(params => {
@@ -147,6 +164,12 @@ export class ClientDetailComponent {
 
       this.expensesService.listByClient(companyId, clientId).subscribe(list => {
         this.expenses.set(list);
+      });
+
+      this.projectService.list(companyId, clientId).subscribe(list => {
+        this.projects.set(list);
+        const selected = this.selectedProjectId();
+        if (selected && !list.some(project => project.id === selected)) this.selectedProjectId.set(null);
       });
     });
   }
@@ -263,10 +286,10 @@ export class ClientDetailComponent {
     this.noteDraft.set(value);
   }
 
-addInvoice(previousInvoice: any | null = null, viewOnly = false, trackingOnly = false) {
+addInvoice(previousInvoice: any | null = null, viewOnly = false, trackingOnly = false, projectId: string | null = null) {
   const ref = this.dialog.open(AddInvoiceDialogComponent, {
     backdropClass: 'dlg-backdrop',
-    panelClass: 'dlg-panel',
+    panelClass: ['dlg-panel', 'invoice-dialog-panel'],
     disableClose: true,
     data: {
       client: this.client(),
@@ -275,7 +298,9 @@ addInvoice(previousInvoice: any | null = null, viewOnly = false, trackingOnly = 
       lastInvoice: this.lastInvoice()?.invoiceNumber,
       previousInvoice,
       viewOnly,
-      trackingOnly
+      trackingOnly,
+      projects: this.projects(),
+      projectId
     }
   });
 
@@ -286,9 +311,51 @@ addInvoice(previousInvoice: any | null = null, viewOnly = false, trackingOnly = 
   });
 }
 
+addProjectInvoice(project: Project): void {
+  // Use the same rendered tab context and launch path as the standard
+  // "New Invoice" action. Opening while the projects view is being rendered
+  // can leave the CDK portal with a partially laid-out dialog.
+  this.setTab('invoices');
+  queueMicrotask(() => this.addInvoice(null, false, false, project.id));
+}
+
 viewInvoice(invoice: any) {
   this.addInvoice(invoice, true);
 }
+
+  async createProject(): Promise<void> {
+    const companyId = this.companyId();
+    const clientId = this.clientId();
+    if (!companyId || !clientId || this.projectForm.invalid || this.creatingProject()) {
+      this.projectForm.markAllAsTouched();
+      return;
+    }
+    this.creatingProject.set(true);
+    try {
+      const value = this.projectForm.getRawValue();
+      await this.projectService.create(companyId, clientId, {
+        name: value.name.trim(), description: value.description.trim(), status: value.status
+      });
+      this.projectForm.reset({ name: '', description: '', status: 'active' });
+      this.notifications.success('Project created.');
+    } finally {
+      this.creatingProject.set(false);
+    }
+  }
+
+  selectProject(projectId: string | null): void { this.selectedProjectId.set(projectId); }
+  selectedProject(): Project | null { return this.projects().find(project => project.id === this.selectedProjectId()) || null; }
+  projectInvoices(projectId: string): InvoiceRecord[] { return this.invoices().filter(invoice => invoice.projectId === projectId); }
+  projectExpenses(projectId: string): Expense[] { return this.expenses().filter(expense => expense.projectId === projectId); }
+  projectInvoiceTotal(projectId: string): number { return this.projectInvoices(projectId).reduce((sum, invoice) => sum + (Number(invoice.total) || 0), 0); }
+  projectExpenseTotal(projectId: string): number { return this.projectExpenses(projectId).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0); }
+  projectNetTotal(projectId: string): number { return this.projectInvoiceTotal(projectId) - this.projectExpenseTotal(projectId); }
+
+  async setProjectStatus(project: Project, status: ProjectStatus): Promise<void> {
+    const companyId = this.companyId();
+    const clientId = this.clientId();
+    if (companyId && clientId) await this.projectService.setStatus(companyId, clientId, project.id, status);
+  }
 
 
   private openInvoiceDialogFromNavigation(): void {
@@ -520,4 +587,4 @@ async sendDocumentEmail(documentType: EmailDocumentType, document: any, reminder
 
 }
 
-type ClientTab = 'overview' | 'details' | 'documents' | 'invoices' | 'expenses' | 'letters';
+type ClientTab = 'overview' | 'details' | 'documents' | 'invoices' | 'expenses' | 'projects' | 'letters';

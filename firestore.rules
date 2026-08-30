@@ -100,6 +100,10 @@ service cloud.firestore {
         match /expenses/{expenseId} {
           allow read, write: if isCompanyMember(companyId);
         }
+
+        match /projects/{projectId} {
+          allow read, write: if isCompanyMember(companyId);
+        }
       }
 
       match /expenses/{expenseId} {

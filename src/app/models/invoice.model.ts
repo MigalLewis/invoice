@@ -56,6 +56,7 @@ export interface InvoicePaymentHistoryEntry {
 
 export interface InvoiceRecord {
   id?: string;
+  projectId?: string | null;
   invoiceNumber?: string;
   date?: any;
   filename?: string;

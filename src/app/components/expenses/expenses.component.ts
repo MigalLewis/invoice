@@ -4,12 +4,13 @@ import { CommonModule } from '@angular/common';
 import { ExpensesService } from '../../services/expenses.service';
 import { ClientService } from '../../services/client.service';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { BehaviorSubject, switchMap, take } from 'rxjs';
+import { BehaviorSubject, map, switchMap, take } from 'rxjs';
 import { CreateExpense, Expense } from '../../models/expense.model';
 import { doc, docData, Firestore } from '@angular/fire/firestore';
 import { CurrencyService } from '../../services/currency.service';
 import { CardHeaderComponent } from '../card-header/card-header.component';
 import { EmptyStateComponent } from '../empty-state/empty-state.component';
+import { Project } from '../../models/project.model';
 
 @Component({
   selector: 'app-expenses',
@@ -31,6 +32,8 @@ export class ExpensesComponent {
   showClientPicker = input(true);
   title = input('Expenses');
   subtitle = input('Capture and manage business expenses per month');
+  projects = input<Project[]>([]);
+  projectId = input<string | null>(null);
 
   // Month selection
   selectedMonth = signal<string>(this.toMonthKey(new Date()));
@@ -70,6 +73,7 @@ export class ExpensesComponent {
     amount: [0, [Validators.required, Validators.min(0.01)]],
     notes: [''],
     clientId: [null as string | null], // optional
+    projectId: [null as string | null],
   });
 
   // Clients dropdown (optional link)
@@ -83,7 +87,10 @@ export class ExpensesComponent {
         return clientId
           ? this.expensesService.listByClientAndMonth(this.companyId(), clientId, month)
           : this.expensesService.listCompanyLevelByMonth(this.companyId(), month);
-      })
+      }),
+      map(expenses => this.projectId()
+        ? expenses.filter(expense => expense.projectId === this.projectId())
+        : expenses)
     ),
     { initialValue: [] as Expense[] }
   );
@@ -121,6 +128,7 @@ export class ExpensesComponent {
       amount: Number(v.amount),
       notes: v.notes?.trim() || "",
       clientId: this.clientId() ?? v.clientId ?? null,
+      projectId: this.projectId() ?? v.projectId ?? null,
     };
 
     await this.expensesService.add(this.companyId(), payload);
@@ -131,6 +139,7 @@ export class ExpensesComponent {
     this.form.controls.amount.setValue(0);
     this.form.controls.notes.setValue('');
     this.form.controls.clientId.setValue(this.clientId());
+    this.form.controls.projectId.setValue(this.projectId());
   }
 
   async deleteExpense(expense: Expense) {
@@ -139,6 +148,11 @@ export class ExpensesComponent {
 
   formatCurrency(value: number) {
     return this.currencyService.format(value, this.currency());
+  }
+
+  projectName(projectId?: string | null): string {
+    if (!projectId) return '—';
+    return this.projects().find(project => project.id === projectId)?.name || 'Unknown project';
   }
 
   pad2(n: number) {

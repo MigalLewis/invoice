@@ -6,6 +6,14 @@
             <input type="text" formControlName="invoiceNumber">
         </div>
 
+        <div class="form-group" *ngIf="projects.length">
+            <label>Project (optional)</label>
+            <select formControlName="projectId">
+                <option [ngValue]="null">No project</option>
+                <option *ngFor="let project of projects" [ngValue]="project.id">{{ project.name }}</option>
+            </select>
+        </div>
+
         <div class="item-row header">
             <div>Description</div>
             <div>Rate ({{ currencySymbol() }})</div>

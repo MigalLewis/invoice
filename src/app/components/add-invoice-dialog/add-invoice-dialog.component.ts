@@ -17,6 +17,7 @@ import { Router } from '@angular/router';
 import { normalizeTemplateFormat } from '../../services/template-renderer.service';
 import { calculateInvoiceTotals, clientTemplateFields, normalizeInvoiceItems } from './invoice-generation.mapper';
 import { daysFromToday, isoDate } from '../../utils/date.utils';
+import { Project } from '../../models/project.model';
 
 
 export interface InvoicePaymentAdjustment {
@@ -100,6 +101,7 @@ export class AddInvoiceDialogComponent {
   currency = signal(this.currencyService.defaultCurrency);
   currencySymbol = signal(this.currencyService.symbolFor(this.currency()));
   invoiceTemplates = signal<CompanyTemplate[]>([]);
+  projects: Project[] = [];
   templatesLoading = signal(false);
 
 
@@ -119,6 +121,7 @@ export class AddInvoiceDialogComponent {
     this.companyId = typeof this.data?.companyId === 'function' ? this.data?.companyId() : this.data?.companyId;
     this.lastInvoice = this.data?.lastInvoice;
     this.previousInvoice = this.data?.previousInvoice;
+    this.projects = this.data?.projects || [];
     this.viewOnly = Boolean(this.data?.viewOnly);
     this.trackingOnly = Boolean(this.data?.trackingOnly);
     const nextInvoiceNumber = this.viewOnly && this.previousInvoice?.invoiceNumber
@@ -127,6 +130,7 @@ export class AddInvoiceDialogComponent {
     const copiedItems = this.getCopiedItems();
     this.form = this.fb.group({
       invoiceNumber: [nextInvoiceNumber, Validators.required],
+      projectId: [this.previousInvoice?.projectId || this.data?.projectId || null],
       notes: [this.previousInvoice?.notes || ''],
       servicesProvided: [this.getCopiedServicesProvided(), Validators.required],
       includeVat: [this.getCopiedIncludeVat()],
@@ -291,6 +295,7 @@ export class AddInvoiceDialogComponent {
         return from(
           this.clientSvc.createInvoice(this.clientId, {
             invoiceNumber: formValue.invoiceNumber,
+            projectId: formValue.projectId || null,
             date: invoiceData.invoice_date,
             subtotal,
             excludingVat: subtotal,
