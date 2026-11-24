@@ -124,6 +124,40 @@ button:is(.icon-button, .icon-btn, .square-button, .more-button, .remove, .close
 
 button:disabled { cursor: not-allowed; transform: none; }
 
+app-bank-statement-importer {
+  .selection-cell { width: 48px; min-width: 48px; padding-inline: 14px; text-align: center; }
+  .selection-cell input { width: 17px; height: 17px; margin: 0; accent-color: var(--primary); cursor: pointer; }
+  .classification-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(190px, 230px) auto;
+    gap: 16px;
+    align-items: end;
+    margin-top: 18px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: #f8fbff;
+  }
+  .selection-count { display: grid; gap: 4px; align-self: center; }
+  .selection-count span { color: var(--muted); font-size: 12px; }
+  .classification-bar label { margin: 0; font-weight: 800; }
+  .classification-bar select { margin-top: 6px; }
+}
+
+@media (max-width: 760px) {
+  app-bank-statement-importer {
+    .classification-bar { grid-template-columns: 1fr 1fr; }
+    .selection-count { grid-column: 1 / -1; }
+  }
+}
+
+@media (max-width: 520px) {
+  app-bank-statement-importer {
+    .classification-bar { grid-template-columns: 1fr; }
+    .selection-count { grid-column: auto; }
+  }
+}
+
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px 24px; }
 .form-group.full { grid-column: 1 / -1; }
 

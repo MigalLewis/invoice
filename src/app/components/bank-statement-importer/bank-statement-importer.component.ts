@@ -1,9 +1,11 @@
 import { CommonModule } from '@angular/common';
-import { Component, inject, OnDestroy, signal } from '@angular/core';
+import { Component, inject, input, OnDestroy, signal } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { BankStatementResponse, ExportFormat } from '../../models/bank-statement-response.model';
 import { BankOption } from '../../models/bank.model';
+import { CreateStatementData, StatementDataType } from '../../models/statement-data.model';
 import { BankStatementApiService } from '../../services/bank-statement-api.service';
+import { StatementDataService } from '../../services/statement-data.service';
 
 @Component({
   selector: 'app-bank-statement-importer',
@@ -14,8 +16,20 @@ import { BankStatementApiService } from '../../services/bank-statement-api.servi
 })
 export class BankStatementImporterComponent implements OnDestroy {
   private readonly api = inject(BankStatementApiService);
+  private readonly statementDataService = inject(StatementDataService);
   private readonly sanitizer = inject(DomSanitizer);
   private rawPdfObjectUrl: string | null = null;
+
+  companyId = input<string>('');
+
+  readonly statementTypes: ReadonlyArray<{ value: StatementDataType; label: string }> = [
+    { value: 'expense', label: 'Expense' },
+    { value: 'paid_invoice', label: 'Paid invoice' },
+    { value: 'income', label: 'Other income' },
+    { value: 'bank_fee', label: 'Bank fee' },
+    { value: 'transfer', label: 'Transfer' },
+    { value: 'other', label: 'Other' }
+  ];
 
   readonly banks: BankOption[] = [
     {
@@ -60,8 +74,11 @@ export class BankStatementImporterComponent implements OnDestroy {
   pdfUrl = signal<SafeResourceUrl | null>(null);
   result = signal<BankStatementResponse | null>(null);
   loading = signal(false);
+  saving = signal(false);
   message = signal('');
   error = signal('');
+  selectedRows = signal<Set<number>>(new Set<number>());
+  selectedType = signal<StatementDataType>('expense');
 
   get headers(): string[] {
     return this.result()?.rows?.[0] ?? [];
@@ -71,6 +88,10 @@ export class BankStatementImporterComponent implements OnDestroy {
     return this.result()?.rows?.slice(1) ?? [];
   }
 
+  get allRowsSelected(): boolean {
+    return this.bodyRows.length > 0 && this.selectedRows().size === this.bodyRows.length;
+  }
+
   ngOnDestroy(): void {
     this.revokeCurrentPdfUrl();
   }
@@ -78,6 +99,7 @@ export class BankStatementImporterComponent implements OnDestroy {
   selectBank(bank: BankOption): void {
     this.selectedBank.set(bank);
     this.result.set(null);
+    this.selectedRows.set(new Set<number>());
     this.clearStatus();
   }
 
@@ -94,6 +116,7 @@ export class BankStatementImporterComponent implements OnDestroy {
 
     this.selectedFile.set(file);
     this.result.set(null);
+    this.selectedRows.set(new Set<number>());
     this.clearStatus();
     this.updatePdfPreview(file);
   }
@@ -138,6 +161,7 @@ export class BankStatementImporterComponent implements OnDestroy {
     this.api.extractStatement(file, bank.type).subscribe({
       next: response => {
         this.result.set(response);
+        this.selectedRows.set(new Set<number>());
         this.message.set('Statement extracted successfully.');
         this.loading.set(false);
       },
@@ -172,9 +196,70 @@ export class BankStatementImporterComponent implements OnDestroy {
     });
   }
 
+  toggleRow(index: number, checked: boolean): void {
+    const selected = new Set(this.selectedRows());
+    checked ? selected.add(index) : selected.delete(index);
+    this.selectedRows.set(selected);
+  }
+
+  toggleAllRows(checked: boolean): void {
+    this.selectedRows.set(checked
+      ? new Set(this.bodyRows.map((_row, index) => index))
+      : new Set<number>());
+  }
+
+  setStatementType(value: string): void {
+    const option = this.statementTypes.find(type => type.value === value);
+    if (option) this.selectedType.set(option.value);
+  }
+
+  async saveSelectedRows(): Promise<void> {
+    const companyId = this.companyId();
+    const bank = this.selectedBank();
+    const file = this.selectedFile();
+    const result = this.result();
+    const selectedIndexes = [...this.selectedRows()].sort((a, b) => a - b);
+
+    if (!companyId || !bank || !file || !result) {
+      this.error.set('The statement context is incomplete. Refresh the page and try again.');
+      return;
+    }
+    if (!selectedIndexes.length) {
+      this.error.set('Select at least one statement row to add.');
+      return;
+    }
+
+    const rows: CreateStatementData[] = selectedIndexes.map(index => ({
+      type: this.selectedType(),
+      bankType: bank.type,
+      bankName: bank.name,
+      sourceFileName: file.name,
+      ...(result.accountNumber ? { accountNumber: result.accountNumber } : {}),
+      ...(result.accountName ? { accountName: result.accountName } : {}),
+      ...(result.branchNumber ? { branchNumber: result.branchNumber } : {}),
+      ...(result.branchName ? { branchName: result.branchName } : {}),
+      headers: [...this.headers],
+      values: [...this.bodyRows[index]],
+      statementRowIndex: index + 1
+    }));
+
+    this.saving.set(true);
+    this.clearStatus();
+    try {
+      await this.statementDataService.addMany(companyId, rows);
+      this.selectedRows.set(new Set<number>());
+      this.message.set(`${rows.length} statement row${rows.length === 1 ? '' : 's'} added as ${this.selectedTypeLabel().toLowerCase()}.`);
+    } catch {
+      this.error.set('The selected statement rows could not be saved. Please try again.');
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
   reset(fileInput?: HTMLInputElement): void {
     this.selectedFile.set(null);
     this.result.set(null);
+    this.selectedRows.set(new Set<number>());
     this.pdfUrl.set(null);
     this.clearStatus();
     this.revokeCurrentPdfUrl();
@@ -184,6 +269,10 @@ export class BankStatementImporterComponent implements OnDestroy {
   private startRequest(): void {
     this.loading.set(true);
     this.clearStatus();
+  }
+
+  private selectedTypeLabel(): string {
+    return this.statementTypes.find(type => type.value === this.selectedType())?.label ?? 'statement data';
   }
 
   private clearStatus(): void {

@@ -55,5 +55,6 @@
   <app-bank-statement-importer
     class="bank-statement-workspace"
     *ngIf="activeWorkspace() === 'statements'"
+    [companyId]="companyId()"
   />
 </app-workspace-shell>

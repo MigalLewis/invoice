@@ -110,6 +110,10 @@ service cloud.firestore {
         allow read, write: if isCompanyMember(companyId);
       }
 
+      match /statementData/{statementDataId} {
+        allow read, write: if isCompanyMember(companyId);
+      }
+
       match /invoiceSummaries/{invoiceId} {
         allow read, write: if isCompanyMember(companyId);
       }

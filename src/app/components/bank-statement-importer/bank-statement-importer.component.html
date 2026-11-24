@@ -117,6 +117,13 @@
         <table>
           <thead>
             <tr>
+              <th class="selection-cell" scope="col">
+                <input
+                  type="checkbox"
+                  aria-label="Select all extracted rows"
+                  [checked]="allRowsSelected"
+                  (change)="toggleAllRows($any($event.target).checked)">
+              </th>
               @for (header of headers; track $index) {
                 <th scope="col">{{ header }}</th>
               }
@@ -125,6 +132,13 @@
           <tbody>
             @for (row of bodyRows; track $index) {
               <tr>
+                <td class="selection-cell">
+                  <input
+                    type="checkbox"
+                    [attr.aria-label]="'Select extracted row ' + ($index + 1)"
+                    [checked]="selectedRows().has($index)"
+                    (change)="toggleRow($index, $any($event.target).checked)">
+                </td>
                 @for (cell of row; track $index) {
                   <td>{{ cell }}</td>
                 }
@@ -132,6 +146,28 @@
             }
           </tbody>
         </table>
+      </div>
+
+      <div class="classification-bar">
+        <div class="selection-count">
+          <strong>{{ selectedRows().size }} selected</strong>
+          <span>Choose how the selected statement rows should be saved.</span>
+        </div>
+        <label>
+          Save as
+          <select #typeSelect [value]="selectedType()" (change)="setStatementType(typeSelect.value)">
+            @for (type of statementTypes; track type.value) {
+              <option [value]="type.value">{{ type.label }}</option>
+            }
+          </select>
+        </label>
+        <button
+          class="primary"
+          type="button"
+          [disabled]="selectedRows().size === 0 || saving()"
+          (click)="saveSelectedRows()">
+          {{ saving() ? 'Adding…' : 'Add' }}
+        </button>
       </div>
     } @else {
       <div class="empty-result">No transaction rows were returned for this statement.</div>
