@@ -12,6 +12,8 @@
     "test:rules": "npx --yes firebase-tools@13.35.1 emulators:exec --only firestore --project demo-invoice-ci \"node test/firestore-rules.test.mjs\"",
     "migrate:templates": "node scripts/migrate-company-template-paths.mjs",
     "migrate:client-expenses": "node scripts/migrate-client-expenses.mjs",
+    "migrate:finance-tags": "node scripts/backfill-finance-tags.mjs",
+    "test:finance-tag-migration": "node --test scripts/finance-tag-migration.test.mjs",
     "backfill:invoice-summaries": "node scripts/backfill-invoice-summaries.mjs",
     "test:functions": "node functions/template-rendering.test.cjs"
   },
