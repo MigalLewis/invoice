@@ -98,7 +98,9 @@ input {
 .hero,
 .metrics,
 .vat-card,
-.finance-expenses {
+.finance-expenses,
+.finance-tabs,
+.bank-statement-workspace {
   width: 100%;
   max-width: 1180px;
   margin-inline: auto;
@@ -106,6 +108,31 @@ input {
 
 .finance-expenses {
   display: block;
+}
+
+.bank-statement-workspace {
+  display: grid;
+}
+
+.finance-tabs {
+  display: flex;
+  gap: 28px;
+  border-bottom: 1px solid var(--border);
+}
+
+.finance-tabs button {
+  padding: 14px 0 16px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.finance-tabs button.active {
+  border-bottom-color: var(--primary);
+  color: var(--primary);
 }
 
 :host ::ng-deep .finance-expenses .wrap.expenses {

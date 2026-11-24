@@ -15,11 +15,12 @@ import { CompanyContextService } from '../../services/company-context.service';
 import { buildAccountantCsv, calculateMonthlyProfit, calculateVatReport } from '../../utils/finance-calculations';
 import { WorkspaceShellComponent } from '../../components/workspace-shell/workspace-shell.component';
 import { MetricCardComponent } from '../../components/metric-card/metric-card.component';
+import { BankStatementImporterComponent } from '../../components/bank-statement-importer/bank-statement-importer.component';
 
 @Component({
   selector: 'app-finance',
   standalone: true,
-  imports: [CommonModule, FormsModule, NavBarComponent, WorkspaceTopbarComponent, ExpensesComponent, WorkspaceShellComponent, MetricCardComponent],
+  imports: [CommonModule, FormsModule, NavBarComponent, WorkspaceTopbarComponent, ExpensesComponent, WorkspaceShellComponent, MetricCardComponent, BankStatementImporterComponent],
   templateUrl: './finance.component.html',
   styleUrl: './finance.component.scss'
 })
@@ -36,6 +37,7 @@ export class FinanceComponent {
   invoices = signal<InvoiceRecord[]>([]);
   expenses = signal<Expense[]>([]);
   loading = signal(true);
+  activeWorkspace = signal<'expenses' | 'statements'>('expenses');
 
   profitSummary = computed(() => calculateMonthlyProfit(this.invoices(), this.expenses(), this.selectedMonth()));
   vatReport = computed(() => calculateVatReport(this.invoices(), this.expenses(), this.selectedMonth()));

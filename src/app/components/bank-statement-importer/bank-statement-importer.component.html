@@ -1,0 +1,140 @@
+<section class="statement-intro card">
+  <div>
+    <p class="eyebrow">Bank statement converter</p>
+    <h2>Turn statement PDFs into usable transaction data</h2>
+    <p class="muted">Choose the statement's bank, upload the PDF, review its orientation and extract the transaction table.</p>
+  </div>
+  <div class="selection-summary" aria-live="polite">
+    <span>Selected bank</span>
+    <strong>{{ selectedBank()?.name || 'None selected' }}</strong>
+    <span>Statement file</span>
+    <strong>{{ selectedFile()?.name || 'No PDF uploaded' }}</strong>
+  </div>
+</section>
+
+<section class="card bank-picker">
+  <div class="section-heading">
+    <div>
+      <span class="step">Step 1</span>
+      <h2>Choose a bank</h2>
+    </div>
+    <p>Use the bank that issued the uploaded statement.</p>
+  </div>
+
+  <div class="bank-grid">
+    @for (bank of banks; track bank.type) {
+      <button
+        class="bank-card"
+        [class.selected]="selectedBank()?.type === bank.type"
+        [attr.aria-pressed]="selectedBank()?.type === bank.type"
+        type="button"
+        (click)="selectBank(bank)">
+        <span class="bank-logo" [style.background]="bank.accent">{{ bank.shortName }}</span>
+        <span class="bank-copy">
+          <strong>{{ bank.name }}</strong>
+          <small>{{ bank.description }}</small>
+        </span>
+        <span class="bank-choice">{{ selectedBank()?.type === bank.type ? 'Selected' : 'Choose bank' }}</span>
+      </button>
+    }
+  </div>
+</section>
+
+@if (selectedBank()) {
+  <section class="statement-workspace">
+    <div class="card upload-panel">
+      <div class="section-heading compact">
+        <div>
+          <span class="step">Step 2</span>
+          <h2>Upload {{ selectedBank()?.name }} statement</h2>
+        </div>
+      </div>
+
+      <p class="muted">Upload a PDF, rotate it if it is sideways, then extract the statement data.</p>
+
+      <label class="upload-box" [class.has-file]="selectedFile()">
+        <input #fileInput type="file" accept="application/pdf,.pdf" (change)="onFileSelected($event)">
+        <span class="upload-icon" aria-hidden="true">↑</span>
+        <strong>{{ selectedFile() ? 'Replace statement PDF' : 'Choose statement PDF' }}</strong>
+        <small>{{ selectedFile()?.name || 'PDF files only' }}</small>
+      </label>
+
+      <div class="statement-actions">
+        <button class="secondary" type="button" [disabled]="!selectedFile() || loading()" (click)="rotatePdf()">Rotate 90°</button>
+        <button class="primary" type="button" [disabled]="!selectedFile() || loading()" (click)="extractStatement()">
+          {{ loading() ? 'Processing…' : 'Extract statement' }}
+        </button>
+        <button class="ghost" type="button" [disabled]="loading() || !selectedFile()" (click)="reset(fileInput)">Clear</button>
+      </div>
+
+      @if (message()) {
+        <div class="status success" role="status">{{ message() }}</div>
+      }
+      @if (error()) {
+        <div class="status error" role="alert">{{ error() }}</div>
+      }
+    </div>
+
+    <div class="card preview-panel">
+      <div class="section-heading compact">
+        <div>
+          <span class="step">PDF preview</span>
+          <h2>{{ selectedFile()?.name || 'No statement selected' }}</h2>
+        </div>
+      </div>
+
+      @if (pdfUrl()) {
+        <iframe [src]="pdfUrl()" title="Uploaded bank statement preview"></iframe>
+      } @else {
+        <div class="empty-preview">Upload a bank statement to preview it here.</div>
+      }
+    </div>
+  </section>
+}
+
+@if (result()) {
+  <section class="card results-panel">
+    <div class="results-heading">
+      <div>
+        <p class="eyebrow">Extracted data</p>
+        <h2>Statement details</h2>
+      </div>
+      <div class="export-actions">
+        <button class="secondary" type="button" [disabled]="loading()" (click)="downloadExport('CSV')">Download CSV</button>
+        <button class="secondary" type="button" [disabled]="loading()" (click)="downloadExport('EXCEL')">Download Excel</button>
+      </div>
+    </div>
+
+    <dl class="account-details">
+      <div><dt>Account number</dt><dd>{{ result()?.accountNumber || '—' }}</dd></div>
+      <div><dt>Account name</dt><dd>{{ result()?.accountName || '—' }}</dd></div>
+      <div><dt>Branch number</dt><dd>{{ result()?.branchNumber || '—' }}</dd></div>
+      <div><dt>Branch name</dt><dd>{{ result()?.branchName || '—' }}</dd></div>
+    </dl>
+
+    @if (headers.length) {
+      <div class="result-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              @for (header of headers; track $index) {
+                <th scope="col">{{ header }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of bodyRows; track $index) {
+              <tr>
+                @for (cell of row; track $index) {
+                  <td>{{ cell }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <div class="empty-result">No transaction rows were returned for this statement.</div>
+    }
+  </section>
+}

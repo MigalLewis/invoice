@@ -26,12 +26,34 @@
     </div>
   </section>
 
+  <nav class="finance-tabs" aria-label="Finance workspaces">
+    <button
+      type="button"
+      [class.active]="activeWorkspace() === 'expenses'"
+      [attr.aria-current]="activeWorkspace() === 'expenses' ? 'page' : null"
+      (click)="activeWorkspace.set('expenses')">
+      Expenses
+    </button>
+    <button
+      type="button"
+      [class.active]="activeWorkspace() === 'statements'"
+      [attr.aria-current]="activeWorkspace() === 'statements' ? 'page' : null"
+      (click)="activeWorkspace.set('statements')">
+      Bank statements
+    </button>
+  </nav>
+
   <app-expenses
     class="finance-expenses"
-    *ngIf="companyId()"
+    *ngIf="companyId() && activeWorkspace() === 'expenses'"
     [companyId]="companyId()"
     [showClientPicker]="false"
     title="Company-level Expenses"
     subtitle="Capture expenses saved directly to the company, separate from client expenses."
+  />
+
+  <app-bank-statement-importer
+    class="bank-statement-workspace"
+    *ngIf="activeWorkspace() === 'statements'"
   />
 </app-workspace-shell>
