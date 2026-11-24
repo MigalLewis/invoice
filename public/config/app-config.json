@@ -1,4 +1,5 @@
 {
+    "apiBaseUrl": "http://localhost:8080",
     "firebase": {
         "apiKey": "AIzaSyCdwLZbe4YxD0COjEMoSS2g0FYhq4cVgx4",
         "authDomain": "invoice-simple-336.firebaseapp.com",

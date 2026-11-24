@@ -1,0 +1,2 @@
+export type BankStatementType = 'STANDARD_BANK' | 'FNB' | 'CAPITEC' | 'ABSA' | 'NEDBANK';
+export interface BankOption { type: BankStatementType; name: string; shortName: string; description: string; accent: string; }

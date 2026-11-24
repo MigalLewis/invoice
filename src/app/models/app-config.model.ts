@@ -1,4 +1,5 @@
 export interface AppConfig {
+  apiBaseUrl: string;
   firebase: {
     apiKey: string;
     authDomain: string;
