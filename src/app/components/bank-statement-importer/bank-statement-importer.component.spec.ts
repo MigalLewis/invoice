@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { BankStatementApiService } from '../../services/bank-statement-api.service';
 import { StatementDataService } from '../../services/statement-data.service';
+import { TagOptionsService } from '../../services/tag-options.service';
 import { BankStatementImporterComponent } from './bank-statement-importer.component';
 
 describe('BankStatementImporterComponent', () => {
@@ -16,13 +17,15 @@ describe('BankStatementImporterComponent', () => {
       'extractStatement',
       'exportStatement'
     ]);
-    statementData = jasmine.createSpyObj<StatementDataService>('StatementDataService', ['addMany']);
+    statementData = jasmine.createSpyObj<StatementDataService>('StatementDataService', ['addMany', 'list', 'updateTags']);
+    statementData.list.and.returnValue(of([]));
 
     await TestBed.configureTestingModule({
       imports: [BankStatementImporterComponent],
       providers: [
         { provide: BankStatementApiService, useValue: api },
-        { provide: StatementDataService, useValue: statementData }
+        { provide: StatementDataService, useValue: statementData },
+        { provide: TagOptionsService, useValue: { options$: () => of([]), resolveTagKeys$: () => of([]) } }
       ]
     }).compileComponents();
 
@@ -81,6 +84,7 @@ describe('BankStatementImporterComponent', () => {
     component.selectedFile.set(file);
     component.result.set(response);
     component.setStatementType('paid_invoice');
+    component.selectedTags.set([{ key: 'project:project-1', type: 'project', label: 'Website', entityId: 'project-1' }]);
     component.toggleRow(1, true);
 
     await component.saveSelectedRows();
@@ -93,7 +97,8 @@ describe('BankStatementImporterComponent', () => {
       accountNumber: '123456789',
       headers: ['Date', 'Description', 'Amount'],
       values: ['2026-11-02', 'Invoice payment', '2500.00'],
-      statementRowIndex: 2
+      statementRowIndex: 2,
+      tagKeys: ['project:project-1']
     }]);
     expect(component.selectedRows().size).toBe(0);
     expect(component.message()).toContain('1 statement row added as paid invoice');

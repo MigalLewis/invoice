@@ -1,11 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { ExpensesComponent } from './expenses.component';
+import { buildExpenseTagKeys, ExpensesComponent } from './expenses.component';
 import { ExpensesService } from '../../services/expenses.service';
 import { ClientService } from '../../services/client.service';
 import { Firestore } from '@angular/fire/firestore';
 import { CurrencyService } from '../../services/currency.service';
 import { of } from 'rxjs';
+import { TagOptionsService } from '../../services/tag-options.service';
 
 describe('ExpensesComponent', () => {
   let component: ExpensesComponent;
@@ -15,10 +16,11 @@ describe('ExpensesComponent', () => {
     await TestBed.configureTestingModule({
       imports: [ExpensesComponent]
       , providers: [
-        { provide: ExpensesService, useValue: { listByClientAndMonth: () => of([]), listCompanyLevelByMonth: () => of([]) } },
+        { provide: ExpensesService, useValue: { listByClientAndMonth: () => of([]), listCompanyLevelByMonth: () => of([]), updateTags: () => Promise.resolve() } },
         { provide: ClientService, useValue: { clients$: () => of([]) } },
         { provide: Firestore, useValue: {} },
-        { provide: CurrencyService, useValue: { defaultCurrency: 'ZAR', symbolFor: () => 'R', normalize: () => 'ZAR', format: (value: number) => `R${value}` } }
+        { provide: CurrencyService, useValue: { defaultCurrency: 'ZAR', symbolFor: () => 'R', normalize: () => 'ZAR', format: (value: number) => `R${value}` } },
+        { provide: TagOptionsService, useValue: { options$: () => of([]), resolveTagKeys$: () => of([]) } }
       ]
     })
     .compileComponents();
@@ -30,5 +32,15 @@ describe('ExpensesComponent', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('includes selected and structured relationship tags in new expenses', () => {
+    component.selectedTags.set([{ key: 'vat:claimable', type: 'vat', label: 'VAT claimable' }]);
+
+    expect(buildExpenseTagKeys(component.selectedTags(), 'client-1', 'project-1')).toEqual([
+      'vat:claimable',
+      'client:client-1',
+      'project:project-1'
+    ]);
   });
 });

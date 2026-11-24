@@ -153,6 +153,12 @@
           <strong>{{ selectedRows().size }} selected</strong>
           <span>Choose how the selected statement rows should be saved.</span>
         </div>
+        <app-finance-tag-picker
+          class="statement-tag-picker"
+          label="Tags for selected rows"
+          [value]="selectedTags()"
+          (valueChange)="selectedTags.set($event)"
+        />
         <label>
           Save as
           <select #typeSelect [value]="selectedType()" (change)="setStatementType(typeSelect.value)">
@@ -171,6 +177,54 @@
       </div>
     } @else {
       <div class="empty-result">No transaction rows were returned for this statement.</div>
+    }
+  </section>
+}
+
+@if (companyId()) {
+  <section class="card saved-statements">
+    <div class="results-heading">
+      <div>
+        <p class="eyebrow">Statement data</p>
+        <h2>Saved statement rows</h2>
+        <p class="muted">Review saved transactions and change their tags at any time.</p>
+      </div>
+      <span class="saved-count">{{ savedRows().length }} saved</span>
+    </div>
+
+    @if (savedRows().length) {
+      <div class="saved-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Type</th>
+              <th scope="col">Bank</th>
+              <th scope="col">Statement row</th>
+              <th scope="col">Tags</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (record of savedRows(); track record.id) {
+              <tr>
+                <td><span class="type-badge">{{ record.type.replace('_', ' ') }}</span></td>
+                <td><strong>{{ record.bankName }}</strong><small>{{ record.sourceFileName }}</small></td>
+                <td>
+                  <div class="saved-values">
+                    @for (value of record.values; track $index) {
+                      <span><small>{{ record.headers[$index] || 'Value ' + ($index + 1) }}</small>{{ value }}</span>
+                    }
+                  </div>
+                </td>
+                <td>
+                  <app-statement-data-tag-editor [companyId]="companyId()" [record]="record" />
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <div class="empty-result">No statement rows have been saved yet.</div>
     }
   </section>
 }

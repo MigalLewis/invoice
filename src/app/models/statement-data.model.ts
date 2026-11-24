@@ -1,4 +1,5 @@
 import { BankStatementType } from './bank.model';
+import { FinanceTagKey } from './finance-tag.model';
 
 export type StatementDataType =
   | 'expense'
@@ -20,9 +21,11 @@ export interface CreateStatementData {
   headers: string[];
   values: string[];
   statementRowIndex: number;
+  tagKeys: FinanceTagKey[];
 }
 
 export interface StatementData extends CreateStatementData {
   id: string;
   createdAt?: unknown;
+  updatedAt?: unknown;
 }

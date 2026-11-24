@@ -142,6 +142,17 @@ app-bank-statement-importer {
   .selection-count span { color: var(--muted); font-size: 12px; }
   .classification-bar label { margin: 0; font-weight: 800; }
   .classification-bar select { margin-top: 6px; }
+  .statement-tag-picker { grid-column: 1 / -1; }
+  .saved-count { padding: 6px 10px; border-radius: 999px; background: #eef4ff; color: var(--primary); font-size: 11px; font-weight: 900; }
+  .saved-table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-md); }
+  .saved-table-wrap table { min-width: 1080px; }
+  .saved-table-wrap td { vertical-align: middle; }
+  .saved-table-wrap td > strong, .saved-table-wrap td > small { display: block; }
+  .saved-table-wrap td > small { margin-top: 4px; color: var(--muted); }
+  .type-badge { display: inline-flex; padding: 5px 8px; border-radius: 999px; background: #eef4ff; color: var(--primary); font-size: 10px; font-weight: 900; text-transform: capitalize; }
+  .saved-values { min-width: 280px; display: flex; flex-wrap: wrap; gap: 10px 16px; }
+  .saved-values span { display: grid; gap: 2px; }
+  .saved-values small { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
 }
 
 @media (max-width: 760px) {

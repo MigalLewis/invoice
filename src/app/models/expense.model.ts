@@ -1,3 +1,5 @@
+import { FinanceTagKey } from './finance-tag.model';
+
 export interface Expense {
   id: string;
   month: string;          // "YYYY-MM"
@@ -9,6 +11,7 @@ export interface Expense {
   notes?: string;
   clientId?: string | null; // present for legacy records and client subcollection records during migration
   projectId?: string | null;
+  tagKeys?: FinanceTagKey[];
   source?: 'company' | 'client' | 'legacyCompanyClient';
   createdAt?: any;
 }

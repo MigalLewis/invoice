@@ -1,0 +1,81 @@
+<div class="tag-field" [class.disabled]="disabled()">
+  <span class="field-label">{{ label() }}</span>
+
+  <div class="selected-tags" [class.empty]="value().length === 0">
+    @for (tag of value(); track tag.key) {
+      <span class="tag-chip" [attr.data-type]="tag.type">
+        <span>{{ tag.label }}</span>
+        @if (tag.contextLabel) {
+          <small>{{ tag.contextLabel }}</small>
+        }
+        <button
+          type="button"
+          [attr.aria-label]="'Remove ' + tag.label"
+          [disabled]="disabled()"
+          (click)="removeTag(tag)">×</button>
+      </span>
+    }
+
+    <button
+      class="picker-trigger"
+      type="button"
+      [disabled]="disabled()"
+      [attr.aria-expanded]="expanded()"
+      aria-haspopup="listbox"
+      (click)="togglePicker()">
+      <span aria-hidden="true">＋</span>
+      {{ value().length ? 'Add tag' : 'Add tags' }}
+    </button>
+  </div>
+
+  @if (expanded()) {
+    <div class="picker-panel" (keydown.escape)="closePicker()">
+      <div class="search-row">
+        <span aria-hidden="true">⌕</span>
+        <input
+          type="search"
+          [placeholder]="placeholder()"
+          [value]="searchQuery()"
+          aria-label="Search available tags"
+          (input)="updateSearch($event)">
+        <button type="button" aria-label="Close tag picker" (click)="closePicker()">×</button>
+      </div>
+
+      <div class="option-list" role="listbox" aria-label="Available tags" aria-multiselectable="true">
+        @for (group of filteredGroups(); track group.type) {
+          <section class="option-group">
+            <h4>{{ group.label }}</h4>
+            @for (tag of group.options; track tag.key) {
+              <button
+                class="tag-option"
+                type="button"
+                role="option"
+                [class.selected]="isSelected(tag)"
+                [attr.aria-selected]="isSelected(tag)"
+                (click)="toggleTag(tag)">
+                <span class="option-mark">{{ isSelected(tag) ? '✓' : '+' }}</span>
+                <span class="option-copy">
+                  <strong>{{ tag.label }}</strong>
+                  @if (tag.contextLabel) {
+                    <small>{{ tag.contextLabel }}</small>
+                  }
+                </span>
+              </button>
+            }
+          </section>
+        }
+
+        @if (filteredGroups().length === 0 && searchQuery().trim()) {
+          <div class="no-results">No existing tags match “{{ searchQuery().trim() }}”.</div>
+        }
+      </div>
+
+      @if (allowCustom() && searchQuery().trim()) {
+        <button class="create-custom" type="button" (click)="createCustomTag()">
+          <span aria-hidden="true">＋</span>
+          Create custom tag “{{ searchQuery().trim() }}”
+        </button>
+      }
+    </div>
+  }
+</div>

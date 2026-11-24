@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { ExpensesService } from '../../services/expenses.service';
@@ -11,11 +11,15 @@ import { CurrencyService } from '../../services/currency.service';
 import { CardHeaderComponent } from '../card-header/card-header.component';
 import { EmptyStateComponent } from '../empty-state/empty-state.component';
 import { Project } from '../../models/project.model';
+import { buildFinanceTagKey, FinanceTag, FinanceTagKey, normalizeFinanceTagKeys } from '../../models/finance-tag.model';
+import { TagOptionsService } from '../../services/tag-options.service';
+import { ExpenseTagEditorComponent } from '../expense-tag-editor/expense-tag-editor.component';
+import { FinanceTagPickerComponent } from '../finance-tag-picker/finance-tag-picker.component';
 
 @Component({
   selector: 'app-expenses',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, CardHeaderComponent, EmptyStateComponent],
+  imports: [CommonModule, ReactiveFormsModule, CardHeaderComponent, EmptyStateComponent, FinanceTagPickerComponent, ExpenseTagEditorComponent],
   templateUrl: './expenses.component.html',
   styleUrl: './expenses.component.scss'
 })
@@ -25,6 +29,7 @@ export class ExpensesComponent {
   private readonly clientsService = inject(ClientService);
   private readonly db = inject(Firestore);
   private readonly currencyService = inject(CurrencyService);
+  private readonly tagOptionsService = inject(TagOptionsService);
 
   // Provided by parent
   companyId = input<string>('');
@@ -40,6 +45,7 @@ export class ExpensesComponent {
   private readonly month$ = new BehaviorSubject<string>(this.selectedMonth());
   currency = signal(this.currencyService.defaultCurrency);
   currencySymbol = computed(() => this.currencyService.symbolFor(this.currency()));
+  selectedTags = signal<FinanceTag[]>([]);
 
   constructor() {
     effect(() => {
@@ -49,6 +55,11 @@ export class ExpensesComponent {
         this.currency.set(this.currencyService.normalize(company?.currency));
       });
     });
+    effect(() => {
+      this.clientId();
+      this.projectId();
+      untracked(() => this.syncStructuredTags());
+    }, { allowSignalWrites: true });
   }
 
   // Categories used in the dropdown
@@ -119,6 +130,8 @@ export class ExpensesComponent {
 
     const v = this.form.getRawValue();
 
+    const clientId = this.clientId() ?? v.clientId ?? null;
+    const projectId = this.projectId() ?? v.projectId ?? null;
     const payload: CreateExpense = {
       month: v.date.slice(0, 7), // YYYY-MM
       date: v.date,
@@ -127,8 +140,9 @@ export class ExpensesComponent {
       supplier: v.supplier?.trim() || "",
       amount: Number(v.amount),
       notes: v.notes?.trim() || "",
-      clientId: this.clientId() ?? v.clientId ?? null,
-      projectId: this.projectId() ?? v.projectId ?? null,
+      clientId,
+      projectId,
+      tagKeys: buildExpenseTagKeys(this.selectedTags(), clientId, projectId),
     };
 
     await this.expensesService.add(this.companyId(), payload);
@@ -140,6 +154,26 @@ export class ExpensesComponent {
     this.form.controls.notes.setValue('');
     this.form.controls.clientId.setValue(this.clientId());
     this.form.controls.projectId.setValue(this.projectId());
+    this.selectedTags.set([]);
+    this.syncStructuredTags();
+  }
+
+  syncStructuredTags() {
+    const clientId = this.clientId() ?? this.form.controls.clientId.value;
+    const projectId = this.projectId() ?? this.form.controls.projectId.value;
+    const relationshipKeys = [
+      ...(clientId ? [buildFinanceTagKey('client', clientId)] : []),
+      ...(projectId ? [buildFinanceTagKey('project', projectId)] : [])
+    ];
+    const otherTags = this.selectedTags().filter(tag => tag.type !== 'client' && tag.type !== 'project');
+    if (!relationshipKeys.length) {
+      this.selectedTags.set(otherTags);
+      return;
+    }
+
+    this.tagOptionsService.resolveTagKeys$(relationshipKeys).pipe(take(1)).subscribe(tags => {
+      this.selectedTags.set([...otherTags, ...tags]);
+    });
   }
 
   async deleteExpense(expense: Expense) {
@@ -165,4 +199,16 @@ export class ExpensesComponent {
     const d = new Date();
     return `${d.getFullYear()}-${this.pad2(d.getMonth() + 1)}-${this.pad2(d.getDate())}`;
   }
+}
+
+export function buildExpenseTagKeys(
+  tags: readonly FinanceTag[],
+  clientId?: string | null,
+  projectId?: string | null
+): FinanceTagKey[] {
+  return normalizeFinanceTagKeys([
+    ...tags.map(tag => tag.key),
+    ...(clientId ? [buildFinanceTagKey('client', clientId)] : []),
+    ...(projectId ? [buildFinanceTagKey('project', projectId)] : [])
+  ]);
 }

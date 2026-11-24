@@ -1,12 +1,19 @@
 import { inject, Injectable } from '@angular/core';
-import { collection, doc, Firestore, serverTimestamp, writeBatch } from '@angular/fire/firestore';
-import { CreateStatementData } from '../models/statement-data.model';
+import { collection, collectionData, doc, Firestore, orderBy, query, serverTimestamp, updateDoc, writeBatch } from '@angular/fire/firestore';
+import { Observable } from 'rxjs';
+import { FinanceTagKey } from '../models/finance-tag.model';
+import { CreateStatementData, StatementData } from '../models/statement-data.model';
 import { ActivityService } from './activity.service';
 
 @Injectable({ providedIn: 'root' })
 export class StatementDataService {
   private readonly db = inject(Firestore);
   private readonly activityService = inject(ActivityService);
+
+  list(companyId: string): Observable<StatementData[]> {
+    const statementData = collection(this.db, `companies/${companyId}/statementData`);
+    return collectionData(query(statementData, orderBy('createdAt', 'desc')), { idField: 'id' }) as Observable<StatementData[]>;
+  }
 
   addMany(companyId: string, rows: CreateStatementData[]): Promise<void> {
     const collectionPath = `companies/${companyId}/statementData`;
@@ -27,6 +34,20 @@ export class StatementDataService {
         });
         await batch.commit();
       }
+    );
+  }
+
+  updateTags(companyId: string, statementDataId: string, tagKeys: FinanceTagKey[]): Promise<void> {
+    const path = `companies/${companyId}/statementData/${statementDataId}`;
+    return this.activityService.track(
+      companyId,
+      'update',
+      path,
+      `Updated tags for bank statement row ${statementDataId}.`,
+      () => updateDoc(doc(this.db, path), {
+        tagKeys,
+        updatedAt: serverTimestamp()
+      })
     );
   }
 }

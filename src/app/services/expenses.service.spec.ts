@@ -3,7 +3,7 @@ import { Firestore } from '@angular/fire/firestore';
 
 import { Expense } from '../models/expense.model';
 import { ActivityService } from './activity.service';
-import { ExpensesService, filterCompanyLevelExpenses, mergeClientExpenseLists } from './expenses.service';
+import { ExpensesService, expenseDocumentPath, filterCompanyLevelExpenses, mergeClientExpenseLists } from './expenses.service';
 
 describe('ExpensesService', () => {
   let service: ExpensesService;
@@ -39,5 +39,13 @@ describe('ExpensesService', () => {
       { ...migratedExpense, source: 'client' },
       { ...legacyExpense, source: 'legacyCompanyClient' }
     ]);
+  });
+
+  it('resolves company, client, and legacy expense storage paths', () => {
+    expect(expenseDocumentPath('company-1', 'expense-1')).toBe('companies/company-1/expenses/expense-1');
+    expect(expenseDocumentPath('company-1', 'expense-2', 'client-1', 'client'))
+      .toBe('companies/company-1/clients/client-1/expenses/expense-2');
+    expect(expenseDocumentPath('company-1', 'expense-3', 'client-1', 'legacyCompanyClient'))
+      .toBe('companies/company-1/expenses/expense-3');
   });
 });

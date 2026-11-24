@@ -1,8 +1,13 @@
 import { CommonModule } from '@angular/common';
 import { Component, inject, input, OnDestroy, signal } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { of, switchMap } from 'rxjs';
+import { FinanceTagPickerComponent } from '../finance-tag-picker/finance-tag-picker.component';
+import { StatementDataTagEditorComponent } from '../statement-data-tag-editor/statement-data-tag-editor.component';
 import { BankStatementResponse, ExportFormat } from '../../models/bank-statement-response.model';
 import { BankOption } from '../../models/bank.model';
+import { FinanceTag } from '../../models/finance-tag.model';
 import { CreateStatementData, StatementDataType } from '../../models/statement-data.model';
 import { BankStatementApiService } from '../../services/bank-statement-api.service';
 import { StatementDataService } from '../../services/statement-data.service';
@@ -10,7 +15,7 @@ import { StatementDataService } from '../../services/statement-data.service';
 @Component({
   selector: 'app-bank-statement-importer',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FinanceTagPickerComponent, StatementDataTagEditorComponent],
   templateUrl: './bank-statement-importer.component.html',
   styleUrl: './bank-statement-importer.component.scss'
 })
@@ -79,6 +84,13 @@ export class BankStatementImporterComponent implements OnDestroy {
   error = signal('');
   selectedRows = signal<Set<number>>(new Set<number>());
   selectedType = signal<StatementDataType>('expense');
+  selectedTags = signal<FinanceTag[]>([]);
+  savedRows = toSignal(
+    toObservable(this.companyId).pipe(
+      switchMap(companyId => companyId ? this.statementDataService.list(companyId) : of([]))
+    ),
+    { initialValue: [] }
+  );
 
   get headers(): string[] {
     return this.result()?.rows?.[0] ?? [];
@@ -100,6 +112,7 @@ export class BankStatementImporterComponent implements OnDestroy {
     this.selectedBank.set(bank);
     this.result.set(null);
     this.selectedRows.set(new Set<number>());
+    this.selectedTags.set([]);
     this.clearStatus();
   }
 
@@ -117,6 +130,7 @@ export class BankStatementImporterComponent implements OnDestroy {
     this.selectedFile.set(file);
     this.result.set(null);
     this.selectedRows.set(new Set<number>());
+    this.selectedTags.set([]);
     this.clearStatus();
     this.updatePdfPreview(file);
   }
@@ -162,6 +176,7 @@ export class BankStatementImporterComponent implements OnDestroy {
       next: response => {
         this.result.set(response);
         this.selectedRows.set(new Set<number>());
+        this.selectedTags.set([]);
         this.message.set('Statement extracted successfully.');
         this.loading.set(false);
       },
@@ -240,7 +255,8 @@ export class BankStatementImporterComponent implements OnDestroy {
       ...(result.branchName ? { branchName: result.branchName } : {}),
       headers: [...this.headers],
       values: [...this.bodyRows[index]],
-      statementRowIndex: index + 1
+      statementRowIndex: index + 1,
+      tagKeys: this.selectedTags().map(tag => tag.key)
     }));
 
     this.saving.set(true);
@@ -260,6 +276,7 @@ export class BankStatementImporterComponent implements OnDestroy {
     this.selectedFile.set(null);
     this.result.set(null);
     this.selectedRows.set(new Set<number>());
+    this.selectedTags.set([]);
     this.pdfUrl.set(null);
     this.clearStatus();
     this.revokeCurrentPdfUrl();

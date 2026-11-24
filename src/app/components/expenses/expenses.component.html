@@ -50,7 +50,7 @@
                 <!-- Optional client link -->
                 <div class="form-group" *ngIf="showClientPicker()">
                     <label class="label">Client (optional)</label>
-                    <select class="form-control" formControlName="clientId">
+                    <select class="form-control" formControlName="clientId" (change)="syncStructuredTags()">
                         <option [ngValue]="null">Business-wide</option>
                         <option *ngFor="let c of clients | async" [ngValue]="c.id">
                             {{ c.displayName }}
@@ -60,10 +60,18 @@
 
                 <div class="form-group" *ngIf="projects().length">
                     <label class="label">Project (optional)</label>
-                    <select class="form-control" formControlName="projectId">
+                    <select class="form-control" formControlName="projectId" (change)="syncStructuredTags()">
                         <option [ngValue]="null">No project</option>
                         <option *ngFor="let project of projects()" [ngValue]="project.id">{{ project.name }}</option>
                     </select>
+                </div>
+
+                <div class="form-group full">
+                    <app-finance-tag-picker
+                        label="Tags"
+                        [value]="selectedTags()"
+                        (valueChange)="selectedTags.set($event)"
+                    />
                 </div>
 
                 <div class="form-group full">
@@ -102,6 +110,7 @@
                         <th>Client</th>
                         <th>Project</th>
                         <th class="right">Amount</th>
+                        <th>Tags</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -128,6 +137,9 @@
                             {{ formatCurrency(e.amount) }}
                         </td>
                         <td>
+                            <app-expense-tag-editor [companyId]="companyId()" [expense]="e" />
+                        </td>
+                        <td>
                             <button type="button" class="secondary small-btn" (click)="deleteExpense(e)">
                                 Delete
                             </button>
@@ -141,6 +153,7 @@
                         <td class="right strong">
                             {{ formatCurrency(monthlyTotal()) }}
                         </td>
+                        <td></td>
                         <td></td>
                     </tr>
                 </tfoot>

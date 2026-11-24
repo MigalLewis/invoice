@@ -1,8 +1,9 @@
 import { inject, Injectable } from '@angular/core';
 import { collectionData, Firestore } from '@angular/fire/firestore';
-import { addDoc, collection, deleteDoc, doc, orderBy, query, serverTimestamp, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { combineLatest, map, Observable, of } from 'rxjs';
 import { CreateExpense, Expense } from '../models/expense.model';
+import { FinanceTagKey } from '../models/finance-tag.model';
 import { ActivityService } from './activity.service';
 
 @Injectable({
@@ -125,9 +126,7 @@ export class ExpensesService {
   }
 
   remove(companyId: string, id: string, clientId?: string | null, source?: Expense['source']) {
-    const path = source === 'client' && clientId
-      ? `companies/${companyId}/clients/${clientId}/expenses/${id}`
-      : `companies/${companyId}/expenses/${id}`;
+    const path = expenseDocumentPath(companyId, id, clientId, source);
 
     return this.activityService.track(
       companyId,
@@ -138,6 +137,28 @@ export class ExpensesService {
     );
   }
 
+  updateTags(companyId: string, expense: Expense, tagKeys: FinanceTagKey[]): Promise<void> {
+    const path = expenseDocumentPath(companyId, expense.id, expense.clientId, expense.source);
+    return this.activityService.track(
+      companyId,
+      'update',
+      path,
+      `Updated tags for expense ${expense.description || expense.id}.`,
+      () => updateDoc(doc(this.fs, path), { tagKeys, updatedAt: serverTimestamp() })
+    );
+  }
+
+}
+
+export function expenseDocumentPath(
+  companyId: string,
+  expenseId: string,
+  clientId?: string | null,
+  source?: Expense['source']
+): string {
+  return source === 'client' && clientId
+    ? `companies/${companyId}/clients/${clientId}/expenses/${expenseId}`
+    : `companies/${companyId}/expenses/${expenseId}`;
 }
 
 export function filterCompanyLevelExpenses(expenses: Expense[]): Expense[] {
