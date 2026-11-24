@@ -11,7 +11,8 @@ describe('ExpenseTagEditorComponent', () => {
     expenses.updateTags.and.resolveTo();
     const expense: Expense = {
       id: 'expense-1', month: '2026-11', date: '2026-11-01',
-      description: 'Hosting', category: 'Software', amount: 500
+      description: 'Hosting', category: 'Software', amount: 500,
+      clientId: 'client-1', projectId: 'project-1'
     };
 
     await TestBed.configureTestingModule({
@@ -31,6 +32,11 @@ describe('ExpenseTagEditorComponent', () => {
       { key: 'vat:claimable', type: 'vat', label: 'VAT claimable', entityId: 'claimable' }
     ]);
 
-    expect(expenses.updateTags).toHaveBeenCalledOnceWith('company-1', expense, ['vat:claimable']);
+    expect(expenses.updateTags).toHaveBeenCalledOnceWith('company-1', expense, [
+      'vat:claimable',
+      'client:client-1',
+      'project:project-1',
+      'category:software'
+    ]);
   });
 });

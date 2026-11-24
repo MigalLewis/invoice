@@ -11,11 +11,11 @@ import { CurrencyService } from '../../services/currency.service';
 import { CardHeaderComponent } from '../card-header/card-header.component';
 import { EmptyStateComponent } from '../empty-state/empty-state.component';
 import { Project } from '../../models/project.model';
-import { buildFinanceTagKey, FinanceTag, FinanceTagKey, normalizeFinanceTagKeys } from '../../models/finance-tag.model';
+import { buildFinanceTagKey, FinanceTag, FinanceTagKey } from '../../models/finance-tag.model';
 import { TagOptionsService } from '../../services/tag-options.service';
 import { ExpenseTagEditorComponent } from '../expense-tag-editor/expense-tag-editor.component';
 import { FinanceTagPickerComponent } from '../finance-tag-picker/finance-tag-picker.component';
-import { matchesFinanceTags } from '../../utils/finance-tag-filter';
+import { effectiveFinanceTagKeys, matchesFinanceTags } from '../../utils/finance-tag-filter';
 
 @Component({
   selector: 'app-expenses',
@@ -148,7 +148,7 @@ export class ExpensesComponent {
       notes: v.notes?.trim() || "",
       clientId,
       projectId,
-      tagKeys: buildExpenseTagKeys(this.selectedTags(), clientId, projectId),
+      tagKeys: buildExpenseTagKeys(this.selectedTags(), clientId, projectId, v.category),
     };
 
     await this.expensesService.add(this.companyId(), payload);
@@ -210,11 +210,13 @@ export class ExpensesComponent {
 export function buildExpenseTagKeys(
   tags: readonly FinanceTag[],
   clientId?: string | null,
-  projectId?: string | null
+  projectId?: string | null,
+  category?: string | null
 ): FinanceTagKey[] {
-  return normalizeFinanceTagKeys([
-    ...tags.map(tag => tag.key),
-    ...(clientId ? [buildFinanceTagKey('client', clientId)] : []),
-    ...(projectId ? [buildFinanceTagKey('project', projectId)] : [])
-  ]);
+  return effectiveFinanceTagKeys({
+    tagKeys: tags.map(tag => tag.key),
+    clientId,
+    projectId,
+    category
+  });
 }

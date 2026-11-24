@@ -37,10 +37,11 @@ describe('ExpensesComponent', () => {
   it('includes selected and structured relationship tags in new expenses', () => {
     component.selectedTags.set([{ key: 'vat:claimable', type: 'vat', label: 'VAT claimable' }]);
 
-    expect(buildExpenseTagKeys(component.selectedTags(), 'client-1', 'project-1')).toEqual([
+    expect(buildExpenseTagKeys(component.selectedTags(), 'client-1', 'project-1', 'Software / Subscriptions')).toEqual([
       'vat:claimable',
       'client:client-1',
-      'project:project-1'
+      'project:project-1',
+      'category:software'
     ]);
   });
 });

@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
-import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ClientService } from '../../services/client.service';
 import { take } from 'rxjs';
@@ -13,9 +13,6 @@ import { WorkspaceTopbarComponent } from '../../components/workspace-topbar/work
 import { doc, docData, Firestore } from '@angular/fire/firestore';
 import { CurrencyService } from '../../services/currency.service';
 import { InvoiceRecord, InvoiceStatus } from '../../models/invoice.model';
-import { CreateExpense, Expense } from '../../models/expense.model';
-import { ExpensesService } from '../../services/expenses.service';
-import { ExpensesComponent } from '../../components/expenses/expenses.component';
 import { Client } from '../../models/client.model';
 import { CompanyDocumentStorageSettings, DOCUMENT_STORAGE_PROVIDER_LABELS, DocumentStorageProvider } from '../../models/document-storage.model';
 import { DocumentStorageService } from '../../services/document-storage.service';
@@ -30,13 +27,13 @@ import { EmptyStateComponent } from '../../components/empty-state/empty-state.co
 import { LoadingStateComponent } from '../../components/loading-state/loading-state.component';
 import { WorkspaceShellComponent } from '../../components/workspace-shell/workspace-shell.component';
 import { clientFormattedAddress, clientInitials, clientStatusClass, clientTypeLabel } from './client-summary.presenter';
-import { Project, ProjectStatus } from '../../models/project.model';
+import { Project } from '../../models/project.model';
 import { ProjectService } from '../../services/project.service';
 
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterLink, NavBarComponent, WorkspaceTopbarComponent, OrderByDateDescPipe, CreateClientComponent, ExpensesComponent, InvoiceTableComponent, StatusBadgeComponent, EmptyStateComponent, LoadingStateComponent, WorkspaceShellComponent],
+  imports: [CommonModule, FormsModule, RouterLink, NavBarComponent, WorkspaceTopbarComponent, OrderByDateDescPipe, CreateClientComponent, InvoiceTableComponent, StatusBadgeComponent, EmptyStateComponent, LoadingStateComponent, WorkspaceShellComponent],
   templateUrl: './client-detail.component.html',
   styleUrl: './client-detail.component.scss'
 })
@@ -48,10 +45,8 @@ export class ClientDetailComponent {
   private db = inject(Firestore);
   private currencyService = inject(CurrencyService);
   private documentStorageService = inject(DocumentStorageService);
-  private expensesService = inject(ExpensesService);
   private notifications = inject(NotificationService);
   private emailService = inject(EmailService);
-  private fb = inject(FormBuilder);
   private projectService = inject(ProjectService);
   
   companyId = signal<string | null>(null);
@@ -59,10 +54,7 @@ export class ClientDetailComponent {
   client = signal<Client | null>(null);
   invoices = signal<InvoiceRecord[]>([]);
   letters = signal<any[]>([]);
-  expenses = signal<Expense[]>([]);
   projects = signal<Project[]>([]);
-  selectedProjectId = signal<string | null>(null);
-  creatingProject = signal(false);
   lastInvoice = signal<any | null>(null);
   loading = signal(true);
   currency = signal(this.currencyService.defaultCurrency);
@@ -82,47 +74,14 @@ export class ClientDetailComponent {
     { id: 'overview', label: 'Overview' },
     { id: 'documents', label: 'Documents' },
     { id: 'invoices', label: 'Invoices' },
-    { id: 'expenses', label: 'Expenses' },
-    { id: 'projects', label: 'Projects' },
     { id: 'letters', label: 'Letters' }
   ];
 
   readonly documentTotal = 14;
 
-  readonly expenseCategories = [
-    'Fuel / Travel',
-    'Software / Subscriptions',
-    'Internet / Phone',
-    'Office Supplies',
-    'Equipment',
-    'Meals / Entertainment',
-    'Rent',
-    'Marketing',
-    'Other'
-  ];
-
-  expenseForm = this.fb.nonNullable.group({
-    date: [this.todayISO(), [Validators.required]],
-    description: ['', [Validators.required, Validators.minLength(2)]],
-    category: ['Other', [Validators.required]],
-    supplier: [''],
-    amount: [0, [Validators.required, Validators.min(0.01)]],
-    notes: ['']
-  });
-
-  projectForm = this.fb.nonNullable.group({
-    name: ['', [Validators.required, Validators.minLength(2)]],
-    description: [''],
-    status: ['active' as ProjectStatus, Validators.required]
-  });
-
-  clientExpenseTotal = computed(() =>
-    this.expenses().reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0)
-  );
   clientInvoicedTotal = computed(() =>
     this.invoices().reduce((sum, invoice) => sum + (Number(invoice.total) || 0), 0)
   );
-  clientNetTotal = computed(() => this.clientInvoicedTotal() - this.clientExpenseTotal());
 
   constructor() {
     this.route.paramMap.subscribe(params => {
@@ -162,14 +121,8 @@ export class ClientDetailComponent {
         this.letters.set(list);
       });
 
-      this.expensesService.listByClient(companyId, clientId).subscribe(list => {
-        this.expenses.set(list);
-      });
-
       this.projectService.list(companyId, clientId).subscribe(list => {
         this.projects.set(list);
-        const selected = this.selectedProjectId();
-        if (selected && !list.some(project => project.id === selected)) this.selectedProjectId.set(null);
       });
     });
   }
@@ -311,51 +264,9 @@ addInvoice(previousInvoice: any | null = null, viewOnly = false, trackingOnly = 
   });
 }
 
-addProjectInvoice(project: Project): void {
-  // Use the same rendered tab context and launch path as the standard
-  // "New Invoice" action. Opening while the projects view is being rendered
-  // can leave the CDK portal with a partially laid-out dialog.
-  this.setTab('invoices');
-  queueMicrotask(() => this.addInvoice(null, false, false, project.id));
-}
-
 viewInvoice(invoice: any) {
   this.addInvoice(invoice, true);
 }
-
-  async createProject(): Promise<void> {
-    const companyId = this.companyId();
-    const clientId = this.clientId();
-    if (!companyId || !clientId || this.projectForm.invalid || this.creatingProject()) {
-      this.projectForm.markAllAsTouched();
-      return;
-    }
-    this.creatingProject.set(true);
-    try {
-      const value = this.projectForm.getRawValue();
-      await this.projectService.create(companyId, clientId, {
-        name: value.name.trim(), description: value.description.trim(), status: value.status
-      });
-      this.projectForm.reset({ name: '', description: '', status: 'active' });
-      this.notifications.success('Project created.');
-    } finally {
-      this.creatingProject.set(false);
-    }
-  }
-
-  selectProject(projectId: string | null): void { this.selectedProjectId.set(projectId); }
-  selectedProject(): Project | null { return this.projects().find(project => project.id === this.selectedProjectId()) || null; }
-  projectInvoices(projectId: string): InvoiceRecord[] { return this.invoices().filter(invoice => invoice.projectId === projectId); }
-  projectExpenses(projectId: string): Expense[] { return this.expenses().filter(expense => expense.projectId === projectId); }
-  projectInvoiceTotal(projectId: string): number { return this.projectInvoices(projectId).reduce((sum, invoice) => sum + (Number(invoice.total) || 0), 0); }
-  projectExpenseTotal(projectId: string): number { return this.projectExpenses(projectId).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0); }
-  projectNetTotal(projectId: string): number { return this.projectInvoiceTotal(projectId) - this.projectExpenseTotal(projectId); }
-
-  async setProjectStatus(project: Project, status: ProjectStatus): Promise<void> {
-    const companyId = this.companyId();
-    const clientId = this.clientId();
-    if (companyId && clientId) await this.projectService.setStatus(companyId, clientId, project.id, status);
-  }
 
 
   private openInvoiceDialogFromNavigation(): void {
@@ -370,55 +281,6 @@ updateInvoiceTracking(invoice: any) {
   this.addInvoice(invoice, false, true);
 }
 
-
-async addClientExpense() {
-  const companyId = this.companyId();
-  const clientId = this.clientId();
-  if (!companyId || !clientId) return;
-  if (this.expenseForm.invalid) {
-    this.expenseForm.markAllAsTouched();
-    return;
-  }
-
-  const value = this.expenseForm.getRawValue();
-  const payload: CreateExpense = {
-    month: value.date.slice(0, 7),
-    date: value.date,
-    description: value.description.trim(),
-    category: value.category,
-    supplier: value.supplier?.trim() || '',
-    amount: Number(value.amount),
-    notes: value.notes?.trim() || '',
-    clientId
-  };
-
-  await this.expensesService.add(companyId, payload);
-  this.expenseForm.patchValue({
-    description: '',
-    supplier: '',
-    amount: 0,
-    notes: ''
-  });
-}
-
-async deleteClientExpense(id: string) {
-  const companyId = this.companyId();
-  if (!companyId) return;
-  await this.expensesService.remove(companyId, id);
-}
-
-formatExpenseDate(value: any): string {
-  return value ? new Date(value).toLocaleDateString() : '—';
-}
-
-pad2(n: number) {
-  return String(n).padStart(2, '0');
-}
-
-todayISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${this.pad2(d.getMonth() + 1)}-${this.pad2(d.getDate())}`;
-}
 
 addLetter() {
   const ref = this.dialog.open(AddLetterDialogComponent, {
@@ -587,4 +449,4 @@ async sendDocumentEmail(documentType: EmailDocumentType, document: any, reminder
 
 }
 
-type ClientTab = 'overview' | 'details' | 'documents' | 'invoices' | 'expenses' | 'projects' | 'letters';
+type ClientTab = 'overview' | 'details' | 'documents' | 'invoices' | 'letters';

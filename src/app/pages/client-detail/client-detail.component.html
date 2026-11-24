@@ -70,11 +70,10 @@
         </article>
 
         <article class="card summary-card client-financial-card">
-          <div class="card-heading compact-heading"><h2 class="section-title">Client Financial Overview</h2><button class="secondary pill-button" type="button" (click)="setTab('projects')">{{ projects().length }} projects</button></div>
+          <div class="card-heading compact-heading"><h2 class="section-title">Client Invoice Overview</h2><a class="secondary pill-button" routerLink="/projects">{{ projects().length }} projects</a></div>
           <dl class="summary-list">
             <div><dt>Invoiced</dt><dd>{{ clientInvoicedTotal() | currency:currency():'symbol' }}</dd></div>
-            <div><dt>Expenses</dt><dd>{{ clientExpenseTotal() | currency:currency():'symbol' }}</dd></div>
-            <div><dt>Client total</dt><dd>{{ clientNetTotal() | currency:currency():'symbol' }}</dd></div>
+            <div><dt>Outstanding</dt><dd>{{ outstandingBalance() | currency:currency():'symbol' }}</dd></div>
           </dl>
         </article>
 
@@ -167,46 +166,6 @@
         <div class="workspace-controls"><input type="🔎" placeholder="Search invoices..."><button class="secondary" type="button">Filters</button><button class="secondary" type="button">Sort</button></div>
         <app-invoice-table [invoices]="invoices()" [clientId]="clientId() || ''" [currency]="currency()" [statusFor]="invoiceStatusFor" [canRemind]="invoiceCanRemind" [reminderText]="invoiceReminderText" (viewed)="viewInvoice($event)" (updated)="updateInvoiceTracking($event)" (emailed)="sendDocumentEmail('invoice', $event)" (reminded)="sendInvoiceReminder($event)"></app-invoice-table>
         <app-empty-state *ngIf="invoices().length === 0" message="No invoices yet for this client."></app-empty-state><div class="pagination">Page 1 of 1</div>
-      </section>
-
-      <section *ngSwitchCase="'expenses'" class="full-table-card">
-        <app-expenses
-          *ngIf="companyId() && clientId()"
-          [companyId]="companyId()!"
-          [clientId]="clientId()!"
-          [projects]="projects()"
-          [showClientPicker]="false"
-          title="Client Expenses"
-          subtitle="Create and manage Firestore-backed expenses for this client."
-        />
-      </section>
-
-      <section *ngSwitchCase="'projects'" class="projects-workspace">
-        <article class="card project-create-card">
-          <div class="card-heading"><div><h2 class="section-title">Projects</h2><p>Projects are optional. Use them to group this client's invoices and expenses.</p></div></div>
-          <form class="project-form" [formGroup]="projectForm" (ngSubmit)="createProject()">
-            <label>Project name <input formControlName="name" placeholder="e.g. Website redesign"></label>
-            <label>Description <input formControlName="description" placeholder="Optional scope or reference"></label>
-            <label>Status <select formControlName="status"><option value="active">Active</option><option value="completed">Completed</option><option value="archived">Archived</option></select></label>
-            <button class="primary" type="submit" [disabled]="projectForm.invalid || creatingProject()">{{ creatingProject() ? 'Creating…' : 'Create Project' }}</button>
-          </form>
-        </article>
-        <app-empty-state *ngIf="projects().length === 0" message="No projects yet. Invoices and expenses can continue to live directly under the client."></app-empty-state>
-        <div class="project-grid" *ngIf="projects().length">
-          <button type="button" class="card project-card" *ngFor="let project of projects()" [class.selected]="selectedProjectId() === project.id" (click)="selectProject(project.id)">
-            <div class="project-title"><strong>{{ project.name }}</strong><app-status-badge [status]="project.status" [label]="project.status"></app-status-badge></div>
-            <p>{{ project.description || 'No description' }}</p>
-            <dl><div><dt>Invoiced</dt><dd>{{ projectInvoiceTotal(project.id) | currency:currency():'symbol' }}</dd></div><div><dt>Expenses</dt><dd>{{ projectExpenseTotal(project.id) | currency:currency():'symbol' }}</dd></div><div><dt>Project total</dt><dd>{{ projectNetTotal(project.id) | currency:currency():'symbol' }}</dd></div></dl>
-          </button>
-        </div>
-        <ng-container *ngIf="selectedProject() as project">
-          <article class="card project-detail-card">
-            <div class="table-toolbar"><div><h2 class="section-title">{{ project.name }}</h2><p>Project-level overview</p></div><div class="card-actions"><select [ngModel]="project.status" (ngModelChange)="setProjectStatus(project, $event)"><option value="active">Active</option><option value="completed">Completed</option><option value="archived">Archived</option></select><button class="primary" type="button" (click)="addProjectInvoice(project)">New project invoice</button></div></div>
-            <app-invoice-table [invoices]="projectInvoices(project.id)" [clientId]="clientId() || ''" [currency]="currency()" [statusFor]="invoiceStatusFor" [canRemind]="invoiceCanRemind" [reminderText]="invoiceReminderText" (viewed)="viewInvoice($event)" (updated)="updateInvoiceTracking($event)"></app-invoice-table>
-            <app-empty-state *ngIf="projectInvoices(project.id).length === 0" message="No invoices assigned to this project."></app-empty-state>
-          </article>
-          <app-expenses *ngIf="companyId() && clientId()" [companyId]="companyId()!" [clientId]="clientId()!" [projects]="projects()" [projectId]="project.id" [showClientPicker]="false" title="Project Expenses" subtitle="Expenses created here are assigned to this project." />
-        </ng-container>
       </section>
 
       <section *ngSwitchCase="'letters'" class="card table-card full-table-card">

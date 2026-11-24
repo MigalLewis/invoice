@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom, of } from 'rxjs';
+import { firstValueFrom, lastValueFrom, NEVER, of } from 'rxjs';
 import { createCustomFinanceTag } from '../models/finance-tag.model';
 import { ClientService } from './client.service';
 import { CompanyContextService } from './company-context.service';
@@ -38,7 +38,7 @@ describe('TagOptionsService', () => {
   });
 
   it('combines company, client, project, system, and custom options into groups', async () => {
-    const groups = await firstValueFrom(service.options$([createCustomFinanceTag('Audit 2026')]));
+    const groups = await lastValueFrom(service.options$([createCustomFinanceTag('Audit 2026')]));
 
     expect(groups.find(group => group.type === 'company')?.options[0]).toEqual(jasmine.objectContaining({
       key: 'company:company-1',
@@ -59,7 +59,7 @@ describe('TagOptionsService', () => {
   });
 
   it('resolves stored keys using current names and provides a fallback for missing options', async () => {
-    const tags = await firstValueFrom(service.resolveTagKeys$([
+    const tags = await lastValueFrom(service.resolveTagKeys$([
       'project:project-1',
       'custom:legacy-review'
     ]));
@@ -70,5 +70,25 @@ describe('TagOptionsService', () => {
       type: 'custom',
       label: 'legacy review'
     });
+  });
+
+  it('provides built-in options immediately while company data is still loading', async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: CompanyContextService,
+          useValue: { currentCompanyId$: () => NEVER, currentCompany$: () => NEVER }
+        },
+        { provide: ClientService, useValue: { clients$: () => NEVER } },
+        { provide: ProjectService, useValue: { list: () => of([]) } }
+      ]
+    });
+
+    const loadingService = TestBed.inject(TagOptionsService);
+    const groups = await firstValueFrom(loadingService.options$());
+
+    expect(groups.find(group => group.type === 'vat')?.options.length).toBe(4);
+    expect(groups.find(group => group.type === 'category')?.options.length).toBeGreaterThan(0);
   });
 });

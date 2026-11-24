@@ -2,85 +2,9 @@
   <section class="hero card">
     <div>
       <p class="eyebrow">Finance</p>
-      <h1>Monthly finance summary</h1>
-      <p class="muted">Review paid client invoices, company and client expenses, VAT, and accountant exports.</p>
+      <h1>Finance workspace</h1>
+      <p class="muted">Capture expenses and process bank statements. Financial analytics and tag filtering are available on the dashboard.</p>
     </div>
-    <div class="actions">
-      <label>Month <input type="month" [ngModel]="selectedMonth()" (ngModelChange)="onMonthChange($event)"></label>
-      <button class="primary" type="button" (click)="exportCsv()">Export CSV</button>
-    </div>
-  </section>
-
-  <section class="metrics">
-    <app-metric-card label="Paid invoice totals" [value]="format(profitSummary().invoiceTotal)"></app-metric-card>
-    <app-metric-card label="Total expenses" tone="expenses" [value]="format(profitSummary().expenseTotal)"></app-metric-card>
-    <app-metric-card label="Monthly profit" tone="profit" [value]="format(profitSummary().profit)"></app-metric-card>
-  </section>
-
-  <section class="card vat-card">
-    <h2>VAT report</h2>
-    <div class="vat-grid">
-      <div><span>VAT collected</span><strong>{{ format(vatReport().vatCollected) }}</strong></div>
-      <div><span>VAT paid</span><strong>{{ format(vatReport().vatPaid) }}</strong></div>
-      <div><span>Net VAT</span><strong>{{ format(vatReport().netVat) }}</strong></div>
-    </div>
-  </section>
-
-  <section class="card tag-filter-card">
-    <div class="filter-heading">
-      <div>
-        <p class="eyebrow">Finance filters</p>
-        <h2>Filter by tags</h2>
-        <p class="muted">Selected tags apply across invoices, expenses, and saved statement rows.</p>
-      </div>
-      <div class="filter-summary">
-        <strong>{{ matchingRecordCount() }}</strong>
-        <span>matching records</span>
-      </div>
-    </div>
-    <div class="filter-controls">
-      <app-finance-tag-picker
-        class="finance-tag-filter"
-        label="Show records tagged with"
-        [customTags]="availableCustomTags()"
-        [value]="selectedFilterTags()"
-        (valueChange)="selectedFilterTags.set($event)"
-      />
-      <button class="secondary" type="button" [disabled]="selectedFilterTags().length === 0" (click)="clearTagFilters()">Clear filters</button>
-    </div>
-  </section>
-
-  <section class="project-groups-section">
-    <div class="section-heading">
-      <div>
-        <p class="eyebrow">Project grouping</p>
-        <h2>Finance by project</h2>
-      </div>
-      <p class="muted">Invoices and expenses contribute to totals; statement rows are included as record counts.</p>
-    </div>
-    @if (projectGroups().length) {
-      <div class="project-groups-grid">
-        @for (group of projectGroups(); track group.key) {
-          <article class="project-group-card card" [class.unassigned]="group.key === 'unassigned'">
-            <div class="project-group-title">
-              <div>
-                <span>{{ group.key === 'unassigned' ? 'Other records' : 'Project' }}</span>
-                <h3>{{ group.label }}</h3>
-              </div>
-              <strong>{{ group.recordCount }}</strong>
-            </div>
-            <dl>
-              <div><dt>Invoices</dt><dd>{{ group.invoiceCount }} · {{ format(group.invoiceTotal) }}</dd></div>
-              <div><dt>Expenses</dt><dd>{{ group.expenseCount }} · {{ format(group.expenseTotal) }}</dd></div>
-              <div><dt>Statement rows</dt><dd>{{ group.statementCount }}</dd></div>
-              <div class="net"><dt>Net</dt><dd>{{ format(group.net) }}</dd></div>
-            </dl>
-          </article>
-        }
-      </div>
-    } @else {
-      <div class="card empty-project-groups">No records match the selected tags.</div>
-    }
   </section>
 
   <nav class="finance-tabs" aria-label="Finance workspaces">
@@ -104,7 +28,6 @@
     class="finance-expenses"
     *ngIf="companyId() && activeWorkspace() === 'expenses'"
     [companyId]="companyId()"
-    [filterTagKeys]="filterTagKeys()"
     [showClientPicker]="false"
     title="Company-level Expenses"
     subtitle="Capture expenses saved directly to the company, separate from client expenses."
@@ -114,6 +37,5 @@
     class="bank-statement-workspace"
     *ngIf="activeWorkspace() === 'statements'"
     [companyId]="companyId()"
-    [filterTagKeys]="filterTagKeys()"
   />
 </app-workspace-shell>

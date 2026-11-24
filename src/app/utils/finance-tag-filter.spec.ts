@@ -1,9 +1,15 @@
 import { Expense } from '../models/expense.model';
 import { InvoiceRecord } from '../models/invoice.model';
 import { StatementData } from '../models/statement-data.model';
-import { effectiveFinanceTagKeys, groupFinanceRecordsByProject, matchesFinanceTags } from './finance-tag-filter';
+import { effectiveFinanceTagKeys, expenseCategoryTagKey, groupFinanceRecordsByProject, matchesFinanceTags } from './finance-tag-filter';
 
 describe('finance tag filtering', () => {
+  it('maps explicit expense categories to filterable category tags', () => {
+    expect(expenseCategoryTagKey('Fuel / Travel')).toBe('category:travel');
+    expect(expenseCategoryTagKey('Software / Subscriptions')).toBe('category:software');
+    expect(effectiveFinanceTagKeys({ category: 'Rent' })).toContain('category:rent');
+    expect(effectiveFinanceTagKeys({ category: 'Rent', tagKeys: ['category:other'] })).toEqual(['category:other']);
+  });
   it('includes structured client and project relationships for legacy records', () => {
     expect(effectiveFinanceTagKeys({
       clientId: 'client-1',

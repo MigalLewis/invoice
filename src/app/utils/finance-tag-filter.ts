@@ -19,14 +19,29 @@ type TaggableRecord = {
   tagKeys?: readonly FinanceTagKey[];
   clientId?: string | null;
   projectId?: string | null;
+  category?: string | null;
 };
 
 export function effectiveFinanceTagKeys(record: TaggableRecord): FinanceTagKey[] {
+  const storedKeys = normalizeFinanceTagKeys(record.tagKeys ?? []);
+  const hasStoredCategory = storedKeys.some(key => parseFinanceTagKey(key)?.type === 'category');
   return normalizeFinanceTagKeys([
-    ...(record.tagKeys ?? []),
+    ...storedKeys,
     ...(record.clientId ? [`client:${record.clientId}`] : []),
-    ...(record.projectId ? [`project:${record.projectId}`] : [])
+    ...(record.projectId ? [`project:${record.projectId}`] : []),
+    ...(record.category && !hasStoredCategory ? [expenseCategoryTagKey(record.category)] : [])
   ]);
+}
+
+export function expenseCategoryTagKey(category: string): FinanceTagKey {
+  const normalized = category.trim().toLocaleLowerCase();
+  if (normalized.includes('travel') || normalized.includes('fuel')) return 'category:travel';
+  if (normalized.includes('software')) return 'category:software';
+  if (normalized.includes('subscription')) return 'category:subscriptions';
+  if (normalized.includes('rent')) return 'category:rent';
+  if (normalized.includes('equipment')) return 'category:equipment';
+  if (normalized.includes('bank') && normalized.includes('fee')) return 'category:bank-fees';
+  return 'category:other';
 }
 
 export function matchesFinanceTags(record: TaggableRecord, selectedKeys: readonly FinanceTagKey[]): boolean {

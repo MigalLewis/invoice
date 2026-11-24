@@ -1,0 +1,29 @@
+:host { display: block; }
+:host ::ng-deep .projects-page { min-height: 100svh; margin-left: 260px; padding: 28px 30px 88px; display: grid; gap: 22px; background: var(--bg); }
+.projects-hero, .create-project-card, .projects-list-section { width: 100%; max-width: 1180px; margin-inline: auto; }
+.projects-hero { display: flex; justify-content: space-between; align-items: end; gap: 24px; }
+.projects-hero h1, h2, h3 { margin: 0; color: var(--ink); }
+.projects-hero > div > p:last-child { max-width: 680px; color: var(--muted); }
+.eyebrow { margin: 0 0 6px; color: var(--primary); font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.project-metrics { display: flex; gap: 10px; }
+.project-metrics span { min-width: 86px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: white; color: var(--muted); font-size: 11px; text-align: center; }
+.project-metrics strong { display: block; color: var(--primary); font-size: 22px; }
+.card { padding: 22px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 10px 26px rgba(7,31,77,.045); }
+.create-project-card { display: grid; gap: 18px; }
+.create-project-card form { display: grid; grid-template-columns: 1.1fr 1.2fr 1.5fr .8fr auto; gap: 12px; align-items: end; }
+label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 800; }
+input, select { min-width: 0; padding: 11px; border: 1px solid var(--border); border-radius: 10px; background: white; }
+.primary { min-height: 42px; }
+.projects-list-section { display: grid; gap: 16px; }
+.section-heading, .project-title, .project-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.status-filters { display: flex; gap: 7px; flex-wrap: wrap; }
+.status-filters button { padding: 8px 12px; border: 1px solid var(--border); border-radius: 999px; background: white; color: var(--muted); font-weight: 800; cursor: pointer; }
+.status-filters button.active { background: var(--primary); color: white; }
+.project-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.project-card { display: grid; gap: 18px; border-top: 4px solid var(--primary); }
+.project-title small { display: block; margin-bottom: 4px; color: var(--muted); }
+.project-card > p { min-height: 40px; margin: 0; color: var(--muted); line-height: 1.5; }
+.project-actions { padding-top: 14px; border-top: 1px solid var(--border); }
+.project-actions a { color: var(--primary); font-size: 12px; font-weight: 800; text-decoration: none; }
+@media (max-width: 1024px) { :host ::ng-deep .projects-page { margin-left: 0; padding-top: 112px; } .create-project-card form { grid-template-columns: 1fr 1fr; } .project-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 720px) { :host ::ng-deep .projects-page { padding-inline: 16px; } .projects-hero { align-items: stretch; flex-direction: column; } .project-metrics { width: 100%; } .project-metrics span { flex: 1; min-width: 0; } .create-project-card form, .project-grid { grid-template-columns: 1fr; } .section-heading { align-items: stretch; flex-direction: column; } }

@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import { catchError, combineLatest, map, Observable, of, switchMap } from 'rxjs';
+import { catchError, combineLatest, map, Observable, of, startWith, switchMap } from 'rxjs';
 import { Client } from '../models/client.model';
 import {
   createFinanceTag,
@@ -65,9 +65,18 @@ export class TagOptionsService {
 
   options$(customTags: readonly FinanceTag[] = []): Observable<FinanceTagGroup[]> {
     return combineLatest([
-      this.companyContext.currentCompanyId$(),
-      this.companyContext.currentCompany$(),
-      this.clientService.clients$()
+      this.companyContext.currentCompanyId$().pipe(
+        startWith(null),
+        catchError(() => of(null))
+      ),
+      this.companyContext.currentCompany$().pipe(
+        startWith(null),
+        catchError(() => of(null))
+      ),
+      this.clientService.clients$().pipe(
+        startWith([] as Client[]),
+        catchError(() => of([] as Client[]))
+      )
     ]).pipe(
       switchMap(([companyId, company, clients]) => this.loadProjects(companyId, clients).pipe(
         map(projects => this.buildGroups(

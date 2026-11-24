@@ -12,6 +12,7 @@ import { PlaceholderPageComponent } from './pages/placeholder/placeholder-page.c
 import { TemplatesComponent } from './pages/templates/templates.component';
 import { FinanceComponent } from './pages/finance/finance.component';
 import { SettingsPageComponent } from './pages/settings/settings-page.component';
+import { ProjectsComponent } from './pages/projects/projects.component';
 
 const companyRoutes = [authGuard, companyGuard];
 
@@ -23,6 +24,7 @@ export const routes: Routes = [
   { path: 'company-details', component: PlaceholderPageComponent, canActivate: companyRoutes, data: { sectionName: 'Company Details' } },
   { path: 'clients/new', component: CreateClientComponent, canActivate: companyRoutes },
   { path: 'clients', component: ClientListComponent, canActivate: companyRoutes },
+  { path: 'projects', component: ProjectsComponent, canActivate: companyRoutes },
   { path: 'templates', component: TemplatesComponent, canActivate: companyRoutes },
   { path: 'email-templates/designer/:templateId', redirectTo: 'templates' },
   { path: 'email-templates/designer', redirectTo: 'templates' },

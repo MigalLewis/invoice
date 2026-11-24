@@ -6,6 +6,7 @@ import { FinanceTag } from '../../models/finance-tag.model';
 import { ExpensesService } from '../../services/expenses.service';
 import { TagOptionsService } from '../../services/tag-options.service';
 import { FinanceTagPickerComponent } from '../finance-tag-picker/finance-tag-picker.component';
+import { effectiveFinanceTagKeys } from '../../utils/finance-tag-filter';
 
 @Component({
   selector: 'app-expense-tag-editor',
@@ -35,7 +36,7 @@ export class ExpenseTagEditorComponent {
   private readonly resolvedTags = toSignal(
     toObservable(this.expense).pipe(
       switchMap(expense => expense
-        ? this.tagOptionsService.resolveTagKeys$(expense.tagKeys ?? [])
+        ? this.tagOptionsService.resolveTagKeys$(effectiveFinanceTagKeys(expense))
         : of([] as FinanceTag[]))
     ),
     { initialValue: [] as FinanceTag[] }
@@ -54,7 +55,11 @@ export class ExpenseTagEditorComponent {
     this.saving.set(true);
     this.error.set('');
     try {
-      await this.expensesService.updateTags(companyId, expense, tags.map(tag => tag.key));
+      const tagKeys = effectiveFinanceTagKeys({
+        ...expense,
+        tagKeys: tags.map(tag => tag.key)
+      });
+      await this.expensesService.updateTags(companyId, expense, tagKeys);
     } catch {
       this.error.set('Tags could not be saved.');
     } finally {

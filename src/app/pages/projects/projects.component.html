@@ -1,0 +1,31 @@
+<app-workspace-shell shellClass="projects-page" *ngIf="!loading(); else loadingTpl">
+  <header class="projects-hero">
+    <div><p class="eyebrow">Workspace</p><h1>Projects</h1><p>Manage project names and statuses across all clients. Use project tags to group invoices and expenses in Finance.</p></div>
+    <div class="project-metrics"><span><strong>{{ projects().length }}</strong>Total</span><span><strong>{{ activeCount() }}</strong>Active</span><span><strong>{{ completedCount() }}</strong>Completed</span></div>
+  </header>
+
+  <section class="card create-project-card">
+    <div><p class="eyebrow">New project</p><h2>Create a project</h2></div>
+    <form [formGroup]="projectForm" (ngSubmit)="createProject()">
+      <label>Client<select formControlName="clientId"><option value="">Select a client</option><option *ngFor="let client of clients()" [value]="client.id">{{ client.companyName || client.displayName }}</option></select></label>
+      <label>Project name<input formControlName="name" placeholder="e.g. Website redesign"></label>
+      <label>Description<input formControlName="description" placeholder="Optional scope or reference"></label>
+      <label>Status<select formControlName="status"><option value="active">Active</option><option value="completed">Completed</option><option value="archived">Archived</option></select></label>
+      <button class="primary" type="submit" [disabled]="projectForm.invalid || creating()">{{ creating() ? 'Creating…' : 'Create project' }}</button>
+    </form>
+  </section>
+
+  <section class="projects-list-section">
+    <div class="section-heading"><div><p class="eyebrow">Portfolio</p><h2>All projects</h2></div><div class="status-filters" aria-label="Filter projects by status"><button type="button" *ngFor="let status of ['all', 'active', 'completed', 'archived']" [class.active]="statusFilter() === status" (click)="statusFilter.set($any(status))">{{ status | titlecase }}</button></div></div>
+    <app-empty-state *ngIf="visibleProjects().length === 0" message="No projects match this status."></app-empty-state>
+    <div class="project-grid" *ngIf="visibleProjects().length">
+      <article class="card project-card" *ngFor="let project of visibleProjects()">
+        <div class="project-title"><div><small>{{ clientName(project.clientId) }}</small><h3>{{ project.name }}</h3></div><app-status-badge [status]="project.status" [label]="project.status"></app-status-badge></div>
+        <p>{{ project.description || 'No description has been added.' }}</p>
+        <div class="project-actions"><select [value]="project.status" (change)="setStatus(project, $any($event.target).value)"><option value="active">Active</option><option value="completed">Completed</option><option value="archived">Archived</option></select><a [routerLink]="['/company', companyId(), 'client', project.clientId]">View client</a></div>
+      </article>
+    </div>
+  </section>
+</app-workspace-shell>
+
+<ng-template #loadingTpl><app-loading-state message="Loading projects..."></app-loading-state></ng-template>
