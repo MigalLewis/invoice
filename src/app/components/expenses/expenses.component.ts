@@ -15,6 +15,7 @@ import { buildFinanceTagKey, FinanceTag, FinanceTagKey, normalizeFinanceTagKeys 
 import { TagOptionsService } from '../../services/tag-options.service';
 import { ExpenseTagEditorComponent } from '../expense-tag-editor/expense-tag-editor.component';
 import { FinanceTagPickerComponent } from '../finance-tag-picker/finance-tag-picker.component';
+import { matchesFinanceTags } from '../../utils/finance-tag-filter';
 
 @Component({
   selector: 'app-expenses',
@@ -39,6 +40,7 @@ export class ExpensesComponent {
   subtitle = input('Capture and manage business expenses per month');
   projects = input<Project[]>([]);
   projectId = input<string | null>(null);
+  filterTagKeys = input<readonly FinanceTagKey[]>([]);
 
   // Month selection
   selectedMonth = signal<string>(this.toMonthKey(new Date()));
@@ -106,9 +108,13 @@ export class ExpensesComponent {
     { initialValue: [] as Expense[] }
   );
 
+  visibleExpenses = computed(() =>
+    this.expenses().filter(expense => matchesFinanceTags(expense, this.filterTagKeys()))
+  );
+
   // Monthly total
   monthlyTotal = computed(() =>
-    this.expenses().reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+    this.visibleExpenses().reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
   );
 
   onMonthChange(value: string) {

@@ -95,9 +95,34 @@ input {
   gap: 16px;
 }
 
+.tag-filter-card { display: grid; gap: 20px; }
+.filter-heading, .section-heading, .project-group-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.filter-summary { min-width: 120px; padding: 12px 16px; border-radius: 14px; background: #eef4ff; text-align: center; }
+.filter-summary strong { display: block; color: var(--primary); font-size: 1.7rem; }
+.filter-summary span { font-size: 11px; font-weight: 800; }
+.filter-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: end; }
+.finance-tag-filter { min-width: 0; }
+.project-groups-section { display: grid; gap: 16px; }
+.section-heading { align-items: end; }
+.section-heading > p { max-width: 520px; text-align: right; }
+.project-groups-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.project-group-card { padding: 20px; border-top: 4px solid var(--primary); }
+.project-group-card.unassigned { border-top-color: #98a2b3; }
+.project-group-title span { font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.project-group-title h3 { margin: 4px 0 0; color: var(--ink); font-size: 18px; }
+.project-group-title > strong { min-width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: #eef4ff; color: var(--primary); }
+.project-group-card dl { display: grid; gap: 10px; margin: 20px 0 0; }
+.project-group-card dl div { display: flex; justify-content: space-between; gap: 12px; }
+.project-group-card dt { color: var(--muted); font-size: 12px; }
+.project-group-card dd { margin: 0; color: var(--ink); font-size: 12px; font-weight: 800; text-align: right; }
+.project-group-card .net { padding-top: 10px; border-top: 1px solid var(--border); }
+.empty-project-groups { color: var(--muted); text-align: center; }
+
 .hero,
 .metrics,
 .vat-card,
+.tag-filter-card,
+.project-groups-section,
 .finance-expenses,
 .finance-tabs,
 .bank-statement-workspace {
@@ -163,7 +188,13 @@ input {
   }
 
   .metrics,
-  .vat-grid {
+  .vat-grid,
+  .project-groups-grid {
     grid-template-columns: 1fr;
   }
+
+  .filter-heading,
+  .section-heading { align-items: stretch; flex-direction: column; }
+  .section-heading > p { text-align: left; }
+  .filter-controls { grid-template-columns: 1fr; }
 }

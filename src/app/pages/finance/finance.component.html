@@ -26,6 +26,63 @@
     </div>
   </section>
 
+  <section class="card tag-filter-card">
+    <div class="filter-heading">
+      <div>
+        <p class="eyebrow">Finance filters</p>
+        <h2>Filter by tags</h2>
+        <p class="muted">Selected tags apply across invoices, expenses, and saved statement rows.</p>
+      </div>
+      <div class="filter-summary">
+        <strong>{{ matchingRecordCount() }}</strong>
+        <span>matching records</span>
+      </div>
+    </div>
+    <div class="filter-controls">
+      <app-finance-tag-picker
+        class="finance-tag-filter"
+        label="Show records tagged with"
+        [customTags]="availableCustomTags()"
+        [value]="selectedFilterTags()"
+        (valueChange)="selectedFilterTags.set($event)"
+      />
+      <button class="secondary" type="button" [disabled]="selectedFilterTags().length === 0" (click)="clearTagFilters()">Clear filters</button>
+    </div>
+  </section>
+
+  <section class="project-groups-section">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Project grouping</p>
+        <h2>Finance by project</h2>
+      </div>
+      <p class="muted">Invoices and expenses contribute to totals; statement rows are included as record counts.</p>
+    </div>
+    @if (projectGroups().length) {
+      <div class="project-groups-grid">
+        @for (group of projectGroups(); track group.key) {
+          <article class="project-group-card card" [class.unassigned]="group.key === 'unassigned'">
+            <div class="project-group-title">
+              <div>
+                <span>{{ group.key === 'unassigned' ? 'Other records' : 'Project' }}</span>
+                <h3>{{ group.label }}</h3>
+              </div>
+              <strong>{{ group.recordCount }}</strong>
+            </div>
+            <dl>
+              <div><dt>Invoices</dt><dd>{{ group.invoiceCount }} · {{ format(group.invoiceTotal) }}</dd></div>
+              <div><dt>Expenses</dt><dd>{{ group.expenseCount }} · {{ format(group.expenseTotal) }}</dd></div>
+              <div><dt>Statement rows</dt><dd>{{ group.statementCount }}</dd></div>
+              <div class="net"><dt>Net</dt><dd>{{ format(group.net) }}</dd></div>
+            </dl>
+          </article>
+        }
+      </div>
+    } @else {
+      <div class="card empty-project-groups">No records match the selected tags.</div>
+    }
+  </section>
+
   <nav class="finance-tabs" aria-label="Finance workspaces">
     <button
       type="button"
@@ -47,6 +104,7 @@
     class="finance-expenses"
     *ngIf="companyId() && activeWorkspace() === 'expenses'"
     [companyId]="companyId()"
+    [filterTagKeys]="filterTagKeys()"
     [showClientPicker]="false"
     title="Company-level Expenses"
     subtitle="Capture expenses saved directly to the company, separate from client expenses."
@@ -56,5 +114,6 @@
     class="bank-statement-workspace"
     *ngIf="activeWorkspace() === 'statements'"
     [companyId]="companyId()"
+    [filterTagKeys]="filterTagKeys()"
   />
 </app-workspace-shell>

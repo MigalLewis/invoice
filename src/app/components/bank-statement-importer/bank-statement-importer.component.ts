@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, inject, input, OnDestroy, signal } from '@angular/core';
+import { Component, computed, inject, input, OnDestroy, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { of, switchMap } from 'rxjs';
@@ -7,7 +7,8 @@ import { FinanceTagPickerComponent } from '../finance-tag-picker/finance-tag-pic
 import { StatementDataTagEditorComponent } from '../statement-data-tag-editor/statement-data-tag-editor.component';
 import { BankStatementResponse, ExportFormat } from '../../models/bank-statement-response.model';
 import { BankOption } from '../../models/bank.model';
-import { FinanceTag } from '../../models/finance-tag.model';
+import { FinanceTag, FinanceTagKey } from '../../models/finance-tag.model';
+import { matchesFinanceTags } from '../../utils/finance-tag-filter';
 import { CreateStatementData, StatementDataType } from '../../models/statement-data.model';
 import { BankStatementApiService } from '../../services/bank-statement-api.service';
 import { StatementDataService } from '../../services/statement-data.service';
@@ -26,6 +27,7 @@ export class BankStatementImporterComponent implements OnDestroy {
   private rawPdfObjectUrl: string | null = null;
 
   companyId = input<string>('');
+  filterTagKeys = input<readonly FinanceTagKey[]>([]);
 
   readonly statementTypes: ReadonlyArray<{ value: StatementDataType; label: string }> = [
     { value: 'expense', label: 'Expense' },
@@ -90,6 +92,9 @@ export class BankStatementImporterComponent implements OnDestroy {
       switchMap(companyId => companyId ? this.statementDataService.list(companyId) : of([]))
     ),
     { initialValue: [] }
+  );
+  visibleSavedRows = computed(() =>
+    this.savedRows().filter(record => matchesFinanceTags(record, this.filterTagKeys()))
   );
 
   get headers(): string[] {

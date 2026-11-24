@@ -189,10 +189,10 @@
         <h2>Saved statement rows</h2>
         <p class="muted">Review saved transactions and change their tags at any time.</p>
       </div>
-      <span class="saved-count">{{ savedRows().length }} saved</span>
+      <span class="saved-count">{{ visibleSavedRows().length }} matching</span>
     </div>
 
-    @if (savedRows().length) {
+    @if (visibleSavedRows().length) {
       <div class="saved-table-wrap">
         <table>
           <thead>
@@ -204,7 +204,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (record of savedRows(); track record.id) {
+            @for (record of visibleSavedRows(); track record.id) {
               <tr>
                 <td><span class="type-badge">{{ record.type.replace('_', ' ') }}</span></td>
                 <td><strong>{{ record.bankName }}</strong><small>{{ record.sourceFileName }}</small></td>
@@ -224,7 +224,7 @@
         </table>
       </div>
     } @else {
-      <div class="empty-result">No statement rows have been saved yet.</div>
+      <div class="empty-result">No saved statement rows match the selected tags.</div>
     }
   </section>
 }

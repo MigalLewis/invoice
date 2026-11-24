@@ -97,9 +97,9 @@
             </div>
         </div>
 
-        <app-empty-state *ngIf="expenses().length === 0" message="No expenses recorded for this month."></app-empty-state>
+        <app-empty-state *ngIf="visibleExpenses().length === 0" message="No expenses match this month and the selected tags."></app-empty-state>
 
-        <div class="table-wrap" *ngIf="expenses().length > 0">
+        <div class="table-wrap" *ngIf="visibleExpenses().length > 0">
             <table class="table">
                 <thead>
                     <tr>
@@ -116,7 +116,7 @@
                 </thead>
 
                 <tbody>
-                    <tr *ngFor="let e of expenses()">
+                    <tr *ngFor="let e of visibleExpenses()">
                         <td>{{ e.date }}</td>
                         <td>
                             <div class="strong">{{ e.description }}</div>
