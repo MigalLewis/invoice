@@ -5,6 +5,7 @@ import { Client, ClientUpdate } from '../models/client.model';
 import { ActivityService } from './activity.service';
 import { CompanyContextService } from './company-context.service';
 import { InvoiceRecord, InvoiceSummaryRecord } from '../models/invoice.model';
+import { FinanceTagKey } from '../models/finance-tag.model';
 import { combineLatest, from, map, Observable, of, switchMap } from 'rxjs';
 
 
@@ -87,6 +88,7 @@ export function buildInvoiceSummaryRecord(
     id: invoiceId,
     clientId,
     projectId: invoice.projectId,
+    tagKeys: invoice.tagKeys,
     invoiceNumber: invoice.invoiceNumber,
     date: invoice.date,
     filename: invoice.filename,
@@ -298,6 +300,27 @@ export class ClientService {
           `companies/${companyId}/clients/${clientId}/invoices/${invoiceId}`,
           `Updated line-item descriptions for invoice ${invoiceId}.`,
           () => updateDoc(invoiceRef, { items, lineItems: items, updatedAt: serverTimestamp() })
+        ));
+      })
+    );
+  }
+
+  updateInvoiceTags(clientId: string, invoiceId: string, tagKeys: FinanceTagKey[]): Observable<void> {
+    return this.getCompanyId$().pipe(
+      switchMap(companyId => {
+        const invoicePath = `companies/${companyId}/clients/${clientId}/invoices/${invoiceId}`;
+        const invoiceRef = doc(this.db, invoicePath);
+        const summaryRef = doc(this.db, `companies/${companyId}/invoiceSummaries/${invoiceId}`);
+        return from(this.activityService.track(
+          companyId,
+          'update',
+          invoicePath,
+          `Updated tags for invoice ${invoiceId}.`,
+          async () => {
+            const updatedAt = serverTimestamp();
+            await updateDoc(invoiceRef, { tagKeys, updatedAt });
+            await setDoc(summaryRef, { clientId, tagKeys, updatedAt }, { merge: true });
+          }
         ));
       })
     );

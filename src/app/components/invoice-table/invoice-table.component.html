@@ -1,8 +1,8 @@
 <div class="invoice-table" [class.compact]="compact">
-  <div class="table-row table-head" [class.six]="showPaid">
-    <span>Invoice ID</span><span>Due Date</span><span>Total</span><span *ngIf="showPaid">Paid</span><span>Status</span><span>Actions</span>
+  <div class="table-row table-head" [class.six]="showPaid" [class.with-tags]="!compact">
+    <span>Invoice ID</span><span>Due Date</span><span>Total</span><span *ngIf="showPaid">Paid</span><span>Status</span><span *ngIf="!compact">Tags</span><span>Actions</span>
   </div>
-  <div class="table-row" [class.six]="showPaid" *ngFor="let invoice of visibleInvoices; let index = index">
+  <div class="table-row" [class.six]="showPaid" [class.with-tags]="!compact" *ngFor="let invoice of visibleInvoices; let index = index">
     <strong>{{ invoice.invoiceNumber || '#INV-' + (8821 - index) }}</strong>
     <span>{{ (invoice.dueDate || invoice.date) | date:'mediumDate' }}</span>
     <span>{{ invoice.total | currency:currency:'symbol' }}</span>
@@ -12,6 +12,9 @@
       <small *ngIf="invoice.lastEmail?.status" [title]="invoice.lastEmail?.failureReason || ''">
         Email: {{ invoice.lastEmail?.status }}<ng-container *ngIf="invoice.lastEmail?.failureReason"> — {{ invoice.lastEmail?.failureReason }}</ng-container>
       </small>
+    </span>
+    <span *ngIf="!compact" class="invoice-tags">
+      <app-invoice-tag-editor [clientId]="clientId" [invoice]="invoice" />
     </span>
     <span class="row-actions">
       <button class="secondary small" type="button" (click)="viewed.emit(invoice)">{{ compact ? '•••' : 'View' }}</button>

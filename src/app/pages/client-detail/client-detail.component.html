@@ -86,7 +86,7 @@
               <button class="secondary pill-button" type="button" (click)="addInvoice()"><span class="app-icon" aria-hidden="true">＋</span> New Invoice</button>
             </div>
           </div>
-          <app-invoice-table [invoices]="invoices()" [currency]="currency()" [limit]="4" [compact]="true" [showPaid]="false" [statusFor]="invoiceStatusFor" [canRemind]="invoiceCanRemind" [reminderText]="invoiceReminderText" (viewed)="viewInvoice($event)" (emailed)="sendDocumentEmail('invoice', $event)" (reminded)="sendInvoiceReminder($event)"></app-invoice-table>
+          <app-invoice-table [invoices]="invoices()" [clientId]="clientId() || ''" [currency]="currency()" [limit]="4" [compact]="true" [showPaid]="false" [statusFor]="invoiceStatusFor" [canRemind]="invoiceCanRemind" [reminderText]="invoiceReminderText" (viewed)="viewInvoice($event)" (emailed)="sendDocumentEmail('invoice', $event)" (reminded)="sendInvoiceReminder($event)"></app-invoice-table>
           <app-empty-state *ngIf="invoices().length === 0" message="No invoices yet for this client."></app-empty-state>
         </article>
 
@@ -165,7 +165,7 @@
       <section *ngSwitchCase="'invoices'" class="card table-card full-table-card">
         <div class="table-toolbar"><div><h2 class="section-title">Invoices</h2><p>Search, filter, and manage invoice records for this client.</p></div><div class="card-actions"><button class="secondary pill-button" type="button" (click)="copyLastInvoice()" [disabled]="!lastInvoice()">Copy Last Invoice</button><button class="primary" type="button" (click)="addInvoice()">New Invoice</button></div></div>
         <div class="workspace-controls"><input type="🔎" placeholder="Search invoices..."><button class="secondary" type="button">Filters</button><button class="secondary" type="button">Sort</button></div>
-        <app-invoice-table [invoices]="invoices()" [currency]="currency()" [statusFor]="invoiceStatusFor" [canRemind]="invoiceCanRemind" [reminderText]="invoiceReminderText" (viewed)="viewInvoice($event)" (updated)="updateInvoiceTracking($event)" (emailed)="sendDocumentEmail('invoice', $event)" (reminded)="sendInvoiceReminder($event)"></app-invoice-table>
+        <app-invoice-table [invoices]="invoices()" [clientId]="clientId() || ''" [currency]="currency()" [statusFor]="invoiceStatusFor" [canRemind]="invoiceCanRemind" [reminderText]="invoiceReminderText" (viewed)="viewInvoice($event)" (updated)="updateInvoiceTracking($event)" (emailed)="sendDocumentEmail('invoice', $event)" (reminded)="sendInvoiceReminder($event)"></app-invoice-table>
         <app-empty-state *ngIf="invoices().length === 0" message="No invoices yet for this client."></app-empty-state><div class="pagination">Page 1 of 1</div>
       </section>
 
@@ -202,7 +202,7 @@
         <ng-container *ngIf="selectedProject() as project">
           <article class="card project-detail-card">
             <div class="table-toolbar"><div><h2 class="section-title">{{ project.name }}</h2><p>Project-level overview</p></div><div class="card-actions"><select [ngModel]="project.status" (ngModelChange)="setProjectStatus(project, $event)"><option value="active">Active</option><option value="completed">Completed</option><option value="archived">Archived</option></select><button class="primary" type="button" (click)="addProjectInvoice(project)">New project invoice</button></div></div>
-            <app-invoice-table [invoices]="projectInvoices(project.id)" [currency]="currency()" [statusFor]="invoiceStatusFor" [canRemind]="invoiceCanRemind" [reminderText]="invoiceReminderText" (viewed)="viewInvoice($event)" (updated)="updateInvoiceTracking($event)"></app-invoice-table>
+            <app-invoice-table [invoices]="projectInvoices(project.id)" [clientId]="clientId() || ''" [currency]="currency()" [statusFor]="invoiceStatusFor" [canRemind]="invoiceCanRemind" [reminderText]="invoiceReminderText" (viewed)="viewInvoice($event)" (updated)="updateInvoiceTracking($event)"></app-invoice-table>
             <app-empty-state *ngIf="projectInvoices(project.id).length === 0" message="No invoices assigned to this project."></app-empty-state>
           </article>
           <app-expenses *ngIf="companyId() && clientId()" [companyId]="companyId()!" [clientId]="clientId()!" [projects]="projects()" [projectId]="project.id" [showClientPicker]="false" title="Project Expenses" subtitle="Expenses created here are assigned to this project." />

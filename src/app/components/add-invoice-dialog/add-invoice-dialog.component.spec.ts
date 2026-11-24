@@ -1,4 +1,4 @@
-import { buildPaymentHistoryEntries, resolveTrackedAmountPaid, resolveTrackedInvoiceStatus } from './add-invoice-dialog.component';
+import { buildInvoiceTagKeys, buildPaymentHistoryEntries, resolveTrackedAmountPaid, resolveTrackedInvoiceStatus } from './add-invoice-dialog.component';
 import { Timestamp } from 'firebase/firestore';
 
 describe('invoice payment tracking resolution', () => {
@@ -79,5 +79,15 @@ describe('invoice payment history', () => {
     const [entry] = buildPaymentHistoryEntries(100, 0, 0);
 
     expect(Object.prototype.hasOwnProperty.call(entry, 'createdBy')).toBeFalse();
+  });
+});
+
+describe('invoice tags', () => {
+  it('preserves selected tags and adds client and project relationships', () => {
+    expect(buildInvoiceTagKeys(
+      [{ key: 'status:reconciled', type: 'status', label: 'Reconciled' }],
+      'client-1',
+      'project-1'
+    )).toEqual(['status:reconciled', 'client:client-1', 'project:project-1']);
   });
 });

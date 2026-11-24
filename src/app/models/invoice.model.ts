@@ -1,4 +1,5 @@
 import { Address } from './address.model';
+import { FinanceTagKey } from './finance-tag.model';
 
 export interface InvoiceItem {
   description: string;
@@ -57,6 +58,7 @@ export interface InvoicePaymentHistoryEntry {
 export interface InvoiceRecord {
   id?: string;
   projectId?: string | null;
+  tagKeys?: FinanceTagKey[];
   invoiceNumber?: string;
   date?: any;
   filename?: string;

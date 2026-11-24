@@ -18,6 +18,9 @@ import { normalizeTemplateFormat } from '../../services/template-renderer.servic
 import { calculateInvoiceTotals, clientTemplateFields, normalizeInvoiceItems } from './invoice-generation.mapper';
 import { daysFromToday, isoDate } from '../../utils/date.utils';
 import { Project } from '../../models/project.model';
+import { buildFinanceTagKey, FinanceTag, FinanceTagKey, normalizeFinanceTagKeys, parseFinanceTagKey } from '../../models/finance-tag.model';
+import { TagOptionsService } from '../../services/tag-options.service';
+import { FinanceTagPickerComponent } from '../finance-tag-picker/finance-tag-picker.component';
 
 
 export interface InvoicePaymentAdjustment {
@@ -80,7 +83,7 @@ export function resolveTrackedInvoiceStatus(status: string, total: number, amoun
 @Component({
   selector: 'app-add-invoice-dialog',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, DialogModule, DialogShellComponent],
+  imports: [CommonModule, ReactiveFormsModule, DialogModule, DialogShellComponent, FinanceTagPickerComponent],
   templateUrl: './add-invoice-dialog.component.html',
   styleUrl: './add-invoice-dialog.component.scss'
 })
@@ -95,6 +98,7 @@ export class AddInvoiceDialogComponent {
   private currencyService = inject(CurrencyService);
   private notifications = inject(NotificationService);
   private router = inject(Router);
+  private tagOptionsService = inject(TagOptionsService);
 
   saving = signal(false);
   error = signal<string | null>(null);
@@ -103,6 +107,7 @@ export class AddInvoiceDialogComponent {
   invoiceTemplates = signal<CompanyTemplate[]>([]);
   projects: Project[] = [];
   templatesLoading = signal(false);
+  selectedTags = signal<FinanceTag[]>([]);
 
 
   client: any;
@@ -114,6 +119,7 @@ export class AddInvoiceDialogComponent {
   trackingOnly = false;
   form: any;
   private syncingAmountPaid = false;
+  private tagsInitialized = false;
 
   constructor() {
     this.client = this.data?.client;
@@ -145,7 +151,9 @@ export class AddInvoiceDialogComponent {
     this.form.get('status')?.valueChanges.subscribe(() => this.syncAmountPaidWithStatus());
     this.form.get('items')?.valueChanges.subscribe(() => this.syncAmountPaidWithStatus());
     this.form.get('includeVat')?.valueChanges.subscribe(() => this.syncAmountPaidWithStatus());
+    this.form.get('projectId')?.valueChanges.subscribe(() => this.syncStructuredTags());
     this.syncAmountPaidWithStatus();
+    this.syncStructuredTags();
 
     if (this.companyId) {
       this.templatesLoading.set(true);
@@ -296,6 +304,7 @@ export class AddInvoiceDialogComponent {
           this.clientSvc.createInvoice(this.clientId, {
             invoiceNumber: formValue.invoiceNumber,
             projectId: formValue.projectId || null,
+            tagKeys: buildInvoiceTagKeys(this.selectedTags(), this.clientId, formValue.projectId || null),
             date: invoiceData.invoice_date,
             subtotal,
             excludingVat: subtotal,
@@ -344,6 +353,27 @@ export class AddInvoiceDialogComponent {
       || this.previousInvoice?.services_rendered
       || this.previousInvoice?.servicesRendered
       || this.previousInvoice?.services || '';
+  }
+
+  private syncStructuredTags(): void {
+    const projectId = this.form?.get('projectId')?.value || null;
+    const existingKeys = this.tagsInitialized
+      ? this.selectedTags().map(tag => tag.key)
+      : (this.previousInvoice?.tagKeys ?? []);
+    const nonRelationshipKeys = existingKeys.filter((key: FinanceTagKey) => {
+      const parsed = parseFinanceTagKey(key);
+      return parsed?.type !== 'client' && parsed?.type !== 'project';
+    });
+    const keys = normalizeFinanceTagKeys([
+      ...nonRelationshipKeys,
+      ...(this.clientId ? [buildFinanceTagKey('client', this.clientId)] : []),
+      ...(projectId ? [buildFinanceTagKey('project', projectId)] : [])
+    ]);
+
+    this.tagOptionsService.resolveTagKeys$(keys).pipe(take(1)).subscribe(tags => {
+      this.selectedTags.set(tags);
+      this.tagsInitialized = true;
+    });
   }
 
   private getCopiedIncludeVat(): boolean {
@@ -505,4 +535,16 @@ export class AddInvoiceDialogComponent {
 
     return `${prefix}${nextNum}`;
   }
+}
+
+export function buildInvoiceTagKeys(
+  tags: readonly FinanceTag[],
+  clientId?: string | null,
+  projectId?: string | null
+): FinanceTagKey[] {
+  return normalizeFinanceTagKeys([
+    ...tags.map(tag => tag.key),
+    ...(clientId ? [buildFinanceTagKey('client', clientId)] : []),
+    ...(projectId ? [buildFinanceTagKey('project', projectId)] : [])
+  ]);
 }

@@ -2,11 +2,12 @@ import { CurrencyPipe, DatePipe, NgFor, NgIf } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { InvoiceRecord } from '../../models/invoice.model';
 import { StatusBadgeComponent } from '../status-badge/status-badge.component';
+import { InvoiceTagEditorComponent } from '../invoice-tag-editor/invoice-tag-editor.component';
 
 @Component({
   selector: 'app-invoice-table',
   standalone: true,
-  imports: [CurrencyPipe, DatePipe, NgFor, NgIf, StatusBadgeComponent],
+  imports: [CurrencyPipe, DatePipe, NgFor, NgIf, StatusBadgeComponent, InvoiceTagEditorComponent],
   templateUrl: './invoice-table.component.html',
   styleUrl: './invoice-table.component.scss'
 })
@@ -16,6 +17,7 @@ export class InvoiceTableComponent {
   @Input() limit?: number;
   @Input() compact = false;
   @Input() showPaid = true;
+  @Input() clientId = '';
   @Input() statusFor: (invoice: InvoiceRecord) => string = invoice => invoice.status || 'sent';
   @Input() canRemind: (invoice: InvoiceRecord) => boolean = () => true;
   @Input() reminderText: (invoice: InvoiceRecord) => string = () => 'Reminder';
