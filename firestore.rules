@@ -52,6 +52,12 @@ service cloud.firestore {
             && request.resource.data.nexusFallback.enabled is bool));
     }
 
+    function financeTagsAreValid() {
+      return !request.resource.data.keys().hasAny(['tagKeys'])
+        || (request.resource.data.tagKeys is list
+          && request.resource.data.tagKeys.size() <= 50);
+    }
+
     match /users/{userId} {
       allow get, update, delete: if signedIn() && request.auth.uid == userId;
       allow create: if signedIn()
@@ -90,7 +96,9 @@ service cloud.firestore {
         allow read, write: if isCompanyMember(companyId);
 
         match /invoices/{invoiceId} {
-          allow read, write: if isCompanyMember(companyId);
+          allow read, delete: if isCompanyMember(companyId);
+          allow create, update: if isCompanyMember(companyId)
+            && financeTagsAreValid();
         }
 
         match /letters/{letterId} {
@@ -98,7 +106,9 @@ service cloud.firestore {
         }
 
         match /expenses/{expenseId} {
-          allow read, write: if isCompanyMember(companyId);
+          allow read, delete: if isCompanyMember(companyId);
+          allow create, update: if isCompanyMember(companyId)
+            && financeTagsAreValid();
         }
 
         match /projects/{projectId} {
@@ -107,15 +117,21 @@ service cloud.firestore {
       }
 
       match /expenses/{expenseId} {
-        allow read, write: if isCompanyMember(companyId);
+        allow read, delete: if isCompanyMember(companyId);
+        allow create, update: if isCompanyMember(companyId)
+          && financeTagsAreValid();
       }
 
       match /statementData/{statementDataId} {
-        allow read, write: if isCompanyMember(companyId);
+        allow read, delete: if isCompanyMember(companyId);
+        allow create, update: if isCompanyMember(companyId)
+          && financeTagsAreValid();
       }
 
       match /invoiceSummaries/{invoiceId} {
-        allow read, write: if isCompanyMember(companyId);
+        allow read, delete: if isCompanyMember(companyId);
+        allow create, update: if isCompanyMember(companyId)
+          && financeTagsAreValid();
       }
 
       match /activities/{activityId} {

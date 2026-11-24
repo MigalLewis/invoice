@@ -12,6 +12,7 @@ import { WorkspaceTopbarComponent } from '../workspace-topbar/workspace-topbar.c
     <app-nav-bar *ngIf="showNav"></app-nav-bar>
     <app-workspace-topbar
       [class]="topbarClass"
+      [showSearch]="showSearch"
       [searchControl]="searchControl"
       [searchPlaceholder]="searchPlaceholder">
     </app-workspace-topbar>
@@ -21,6 +22,7 @@ import { WorkspaceTopbarComponent } from '../workspace-topbar/workspace-topbar.c
 })
 export class WorkspaceShellComponent {
   @Input() showNav = true;
+  @Input() showSearch = true;
   @Input() shellClass = 'workspace-shell';
   @Input() topbarClass = '';
   @Input() searchControl?: FormControl<string>;

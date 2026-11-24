@@ -14,6 +14,7 @@ import { CompanyContextService } from '../../services/company-context.service';
   styleUrl: './workspace-topbar.component.scss'
 })
 export class WorkspaceTopbarComponent {
+  @Input() showSearch = true;
   @Input() searchControl?: FormControl<string>;
   @Input() searchPlaceholder = 'Search workspace, clients, invoices...';
 

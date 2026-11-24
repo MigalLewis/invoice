@@ -1,6 +1,44 @@
 :host {
   display: block;
 }
+
+:host ::ng-deep .dashboard-topbar,
+.hero-row,
+.metrics-grid,
+.dashboard-grid,
+.quick-actions {
+  max-width: none;
+}
+
+:host ::ng-deep .dashboard-topbar {
+  justify-content: flex-end;
+}
+
+.dashboard-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, .8fr) minmax(360px, 1.35fr) minmax(280px, 1.2fr) auto;
+  align-items: end;
+  gap: 18px;
+  margin-bottom: 24px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: 0 8px 22px rgba(7, 31, 77, .04);
+}
+
+.filter-copy h2 { font-size: 18px; }
+.filter-copy p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.filter-copy .filter-eyebrow { margin: 0 0 5px; color: var(--primary-600); font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.period-controls { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 10px; }
+.period-controls label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.period-controls select,
+.period-controls input { min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); background: white; color: var(--ink); padding: 10px; font: inherit; font-size: 12px; letter-spacing: 0; text-transform: none; }
+.dashboard-tag-filter { min-width: 0; }
+.clear-dashboard-filters { border: 1px solid var(--border); border-radius: var(--radius-sm); background: #f5f7fb; color: var(--primary); padding: 11px 14px; font-weight: 800; cursor: pointer; }
+.clear-dashboard-filters:disabled { cursor: not-allowed; opacity: .5; }
+.bar-chart { overflow-x: auto; }
+.empty-chart { margin: 0; padding: 0 24px 24px; color: var(--muted); font-size: 12px; }
 :host ::ng-deep .expanded-activity-panel {
   grid-column: 2;
   grid-row: 1 / span 2;
@@ -15,8 +53,14 @@
 }
 
 @media (max-width: 1024px) {
+  .dashboard-filters { grid-template-columns: 1fr 1fr; align-items: start; }
   :host ::ng-deep .expanded-activity-panel {
     grid-column: 1 / -1;
     grid-row: auto;
   }
+}
+
+@media (max-width: 720px) {
+  .dashboard-filters { grid-template-columns: 1fr; }
+  .period-controls { grid-template-columns: 1fr; }
 }

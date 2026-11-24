@@ -62,12 +62,35 @@ await expectDenied(read('companies/company-a/clients/client-1'), 'unauthenticate
 await expectDenied(write('companies/company-a/clients/client-3', { name: 'Anon' }), 'unauthenticated write is denied');
 
 await expectAllowed(write('companies/company-a/templates/invoice', { id: 'invoice', companyId: 'company-a', type: 'invoice', name: 'Default invoice template', storagePath: 'companies/company-a/templates/invoice.docx' }, 'alice'), 'member writes template');
-await expectAllowed(write('companies/company-a/expenses/expense-1', { description: 'Hosting' }, 'alice'), 'member writes expense');
-await expectAllowed(write('companies/company-a/statementData/statement-row-1', { type: 'expense', values: ['Hosting', '499.00'] }, 'alice'), 'member writes statement data');
+await expectAllowed(write('companies/company-a/expenses/expense-1', {
+  description: 'Hosting', tagKeys: ['client:client-1', 'project:project-1']
+}, 'alice'), 'member writes tagged expense');
+await expectAllowed(write('companies/company-a/clients/client-1/expenses/expense-2', {
+  description: 'Design', tagKeys: ['client:client-1']
+}, 'alice'), 'member writes tagged client expense');
+await expectAllowed(write('companies/company-a/statementData/statement-row-1', {
+  type: 'expense', values: ['Hosting', '499.00'], tagKeys: ['category:hosting']
+}, 'alice'), 'member writes tagged statement data');
 await expectDenied(read('companies/company-a/statementData/statement-row-1', 'bob'), 'cross-company statement data read is denied');
-await expectAllowed(write('companies/company-a/clients/client-1/invoices/invoice-1', { invoiceNo: 'INV-1' }, 'alice'), 'member writes invoice');
-await expectAllowed(write('companies/company-a/invoiceSummaries/invoice-1', { clientId: 'client-1', invoiceNo: 'INV-1' }, 'alice'), 'member writes invoice summary');
+await expectDenied(write('companies/company-a/statementData/statement-row-2', {
+  type: 'expense', tagKeys: 'category:hosting'
+}, 'alice'), 'tag keys must be a list');
+await expectDenied(write('companies/company-a/expenses/expense-too-many-tags', {
+  description: 'Invalid', tagKeys: Array.from({ length: 51 }, (_, index) => `custom:${index}`)
+}, 'alice'), 'tag keys are bounded');
+await expectAllowed(write('companies/company-a/clients/client-1/invoices/invoice-1', {
+  invoiceNo: 'INV-1', tagKeys: ['client:client-1', 'project:project-1']
+}, 'alice'), 'member writes tagged invoice');
+await expectAllowed(write('companies/company-a/invoiceSummaries/invoice-1', {
+  clientId: 'client-1', invoiceNo: 'INV-1', tagKeys: ['client:client-1', 'project:project-1']
+}, 'alice'), 'member writes tagged invoice summary');
 await expectDenied(read('companies/company-a/invoiceSummaries/invoice-1', 'bob'), 'cross-company invoice summary read is denied');
+await expectDenied(write('companies/company-a/expenses/intruder-expense', {
+  description: 'Intruder', tagKeys: ['client:client-1']
+}, 'bob'), 'cross-company tagged expense write is denied');
+await expectDenied(write('companies/company-a/clients/client-1/invoices/intruder-invoice', {
+  invoiceNo: 'INV-X', tagKeys: ['client:client-1']
+}, 'bob'), 'cross-company tagged invoice write is denied');
 
 await expectAllowed(write('companies/company-a/emailIntegration/preferences', {
   companyId: 'company-a',

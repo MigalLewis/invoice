@@ -5,6 +5,7 @@ import { doc, docData, Firestore, updateDoc } from '@angular/fire/firestore';
 import { Router, RouterLink } from '@angular/router';
 import { combineLatest, Observable, switchMap } from 'rxjs';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Dialog } from '@angular/cdk/dialog';
 import { UploadTemplateDialogueComponent } from '../../components/upload-template-dialogue/upload-template-dialogue.component';
 import { LinkFolderDialogueComponent } from '../../components/link-folder-dialogue/link-folder-dialogue.component';
@@ -19,11 +20,16 @@ import { AppUser, InvoiceRecord, InvoiceStatus } from '../../models/invoice.mode
 import { WorkspaceShellComponent } from '../../components/workspace-shell/workspace-shell.component';
 import { MetricCardComponent } from '../../components/metric-card/metric-card.component';
 import { LoadingStateComponent } from '../../components/loading-state/loading-state.component';
+import { FinanceTagPickerComponent } from '../../components/finance-tag-picker/finance-tag-picker.component';
+import { createFinanceTag, FinanceTag, parseFinanceTagKey } from '../../models/finance-tag.model';
+import { matchesFinanceTags } from '../../utils/finance-tag-filter';
+
+type DashboardPeriod = 'last30' | 'thisMonth' | 'last3Months' | 'last6Months' | 'thisYear' | 'custom';
 
 @Component({
   selector: 'app-landing',
   standalone: true,
-  imports: [NavBarComponent, WorkspaceTopbarComponent, CommonModule, RouterLink, WorkspaceShellComponent, MetricCardComponent, LoadingStateComponent],
+  imports: [NavBarComponent, WorkspaceTopbarComponent, CommonModule, FormsModule, RouterLink, WorkspaceShellComponent, MetricCardComponent, LoadingStateComponent, FinanceTagPickerComponent],
   templateUrl: './landing.component.html',
   styleUrl: './landing.component.scss'
 })
@@ -48,29 +54,58 @@ export class LandingComponent {
   signedInUserName = signal('Workspace User');
   signedInUserRole = signal('Team Member');
   signedInUserInitials = computed(() => this.initialsFor(this.signedInUserName()));
+  selectedFilterTags = signal<FinanceTag[]>([]);
+  selectedPeriod = signal<DashboardPeriod>('last6Months');
+  dateFrom = signal('');
+  dateTo = signal('');
 
-  outstanding = computed(() => this.invoices().reduce((sum, invoice) => {
+  filterTagKeys = computed(() => this.selectedFilterTags().map(tag => tag.key));
+  tagFilteredInvoices = computed(() => this.invoices().filter(invoice => matchesFinanceTags(invoice, this.filterTagKeys())));
+  tagFilteredExpenses = computed(() => this.expenses().filter(expense => matchesFinanceTags(expense, this.filterTagKeys())));
+  filteredRevenueInvoices = computed(() => this.tagFilteredInvoices().filter(invoice =>
+    this.isWithinSelectedPeriod(invoice.paidAt || invoice.date || invoice.createdAt || invoice.dueDate)
+  ));
+  filteredOutstandingInvoices = computed(() => this.tagFilteredInvoices().filter(invoice =>
+    this.isWithinSelectedPeriod(invoice.date || invoice.createdAt || invoice.dueDate)
+  ));
+  filteredExpenses = computed(() => this.tagFilteredExpenses().filter(expense =>
+    this.isWithinSelectedPeriod(expense.date || expense.createdAt)
+  ));
+  availableCustomTags = computed(() => {
+    const customValues = new Set([
+      ...this.invoices().flatMap(record => record.tagKeys ?? []),
+      ...this.expenses().flatMap(record => record.tagKeys ?? [])
+    ].map(key => parseFinanceTagKey(key))
+      .filter(parsed => parsed?.type === 'custom')
+      .map(parsed => parsed!.value));
+    return [...customValues].map(value => createFinanceTag(
+      'custom',
+      value.replace(/[-_]+/g, ' ').replace(/\b\w/g, character => character.toUpperCase()),
+      value
+    ));
+  });
+  outstanding = computed(() => this.filteredOutstandingInvoices().reduce((sum, invoice) => {
     if (this.normalizedInvoiceStatus(invoice) === 'draft') return sum;
     return sum + this.invoiceOutstanding(invoice);
   }, 0));
 
-  revenue = computed(() => this.invoices().reduce((sum, invoice) => {
+  revenue = computed(() => this.filteredRevenueInvoices().reduce((sum, invoice) => {
     if (this.normalizedInvoiceStatus(invoice) === 'draft') return sum;
     return sum + this.invoiceRevenue(invoice);
   }, 0));
 
-  expenseTotal = computed(() => this.expenses().reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0));
+  expenseTotal = computed(() => this.filteredExpenses().reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0));
   netProfit = computed(() => this.revenue() - this.expenseTotal());
 
   loading = signal(true);
 
   chartMonths = computed(() => {
-    const months = this.lastSixMonths();
+    const months = this.monthsInSelectedPeriod();
     const rows = months.map(month => {
-      const incomeTotal = this.invoices()
+      const incomeTotal = this.filteredRevenueInvoices()
         .filter(invoice => this.invoiceMonthKey(invoice) === month.key)
         .reduce((sum, invoice) => sum + this.invoiceRevenue(invoice), 0);
-      const expenseTotal = this.expenses()
+      const expenseTotal = this.filteredExpenses()
         .filter(expense => this.expenseMonthKey(expense) === month.key)
         .reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
 
@@ -121,6 +156,7 @@ export class LandingComponent {
 
 
   constructor() {
+    this.applyPeriod('last6Months');
     this.companyContext.currentContext$().subscribe({
       next: ({ user, profile, companyId }) => {
         this.setSignedInUser(user, profile);
@@ -152,6 +188,44 @@ export class LandingComponent {
         this.router.navigate([err?.message === 'Not authenticated' ? '/login' : '/register']);
       }
     });
+  }
+
+  applyPeriod(period: DashboardPeriod): void {
+    this.selectedPeriod.set(period);
+    if (period === 'custom') return;
+
+    const today = this.startOfToday();
+    let start: Date;
+    switch (period) {
+      case 'last30':
+        start = new Date(today);
+        start.setDate(start.getDate() - 29);
+        break;
+      case 'thisMonth':
+        start = new Date(today.getFullYear(), today.getMonth(), 1);
+        break;
+      case 'last3Months':
+        start = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+        break;
+      case 'thisYear':
+        start = new Date(today.getFullYear(), 0, 1);
+        break;
+      default:
+        start = new Date(today.getFullYear(), today.getMonth() - 5, 1);
+    }
+    this.dateFrom.set(this.toDateInputValue(start));
+    this.dateTo.set(this.toDateInputValue(today));
+  }
+
+  updateCustomDate(boundary: 'from' | 'to', value: string): void {
+    this.selectedPeriod.set('custom');
+    if (boundary === 'from') this.dateFrom.set(value);
+    else this.dateTo.set(value);
+  }
+
+  clearDashboardFilters(): void {
+    this.selectedFilterTags.set([]);
+    this.applyPeriod('last6Months');
   }
 
   private allExpensesForCompany(companyId: string): Observable<Expense[]> {
@@ -267,17 +341,34 @@ export class LandingComponent {
     return this.monthKeyFromValue(expense.date || expense.createdAt);
   }
 
-  private lastSixMonths() {
+  private monthsInSelectedPeriod() {
     const formatter = new Intl.DateTimeFormat('en', { month: 'short' });
-    const today = new Date();
+    const start = this.dateFromValue(this.dateFrom()) ?? new Date();
+    const end = this.dateFromValue(this.dateTo()) ?? start;
+    const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    const finalMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+    const months = [];
+    while (cursor <= finalMonth && months.length < 24) {
+      months.push({
+        key: `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`,
+        label: formatter.format(cursor)
+      });
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    return months;
+  }
 
-    return Array.from({ length: 6 }, (_, index) => {
-      const date = new Date(today.getFullYear(), today.getMonth() - (5 - index), 1);
-      return {
-        key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
-        label: formatter.format(date)
-      };
-    });
+  private isWithinSelectedPeriod(value: any): boolean {
+    const valueDate = this.dateFromValue(value);
+    const start = this.dateFromValue(this.dateFrom());
+    const end = this.dateFromValue(this.dateTo());
+    if (!valueDate || !start || !end) return false;
+    const timestamp = this.startOfDay(valueDate).getTime();
+    return timestamp >= this.startOfDay(start).getTime() && timestamp <= this.startOfDay(end).getTime();
+  }
+
+  private toDateInputValue(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
 
   private monthKeyFromValue(value: any): string | null {
