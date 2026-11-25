@@ -8,7 +8,7 @@
 .clients-topbar,
 .clients-header,
 .empty-state {
-  max-width: 1180px;
+  max-width: none;
   margin-inline: auto;
 }
 
@@ -224,7 +224,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
-  max-width: 1180px;
+  max-width: none;
   margin-inline: auto;
 }
 

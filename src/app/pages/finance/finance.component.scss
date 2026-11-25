@@ -2,12 +2,13 @@
   display: block;
 }
 
+:host ::ng-deep .dashboard-topbar { max-width: none; }
+
 .finance-page {
   min-height: 100svh;
   margin-left: 260px;
   padding: 28px 30px 88px;
   display: grid;
-  gap: 20px;
 }
 
 .card {
@@ -127,7 +128,7 @@ input {
 .finance-tabs,
 .bank-statement-workspace {
   width: 100%;
-  max-width: 1180px;
+  max-width: none;
   margin-inline: auto;
 }
 

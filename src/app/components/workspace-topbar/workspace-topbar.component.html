@@ -1,4 +1,4 @@
-<section class="dashboard-topbar" aria-label="Workspace controls">
+<section class="dashboard-topbar" [class.without-search]="!showSearch" aria-label="Workspace controls">
   <label *ngIf="showSearch" class="search-box" aria-label="Search workspace">
     <span class="app-icon icon-glyph" aria-hidden="true">🔎</span>
     <input

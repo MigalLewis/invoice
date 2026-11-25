@@ -1,0 +1,10 @@
+<app-workspace-shell shellClass="custom-tags-page" [showSearch]="false" *ngIf="!loading(); else loadingTpl">
+  <app-customisation-tabs />
+  <header class="page-header"><p class="eyebrow">Customisation</p><h1>Custom Tags</h1><p>Create reusable workspace tags for grouping invoices, expenses, and statement records.</p></header>
+  <section class="card create-tag-card">
+    <div><h2>Add a custom tag</h2><p>Use a short, recognisable label such as Retainer, Audit 2026, or Priority.</p></div>
+    <form [formGroup]="form" (ngSubmit)="addTag()"><label>Tag label<input formControlName="label" placeholder="e.g. Audit 2026"></label><button class="primary" type="submit" [disabled]="form.invalid || saving()">{{ saving() ? 'Saving…' : 'Add tag' }}</button></form>
+  </section>
+  <section class="tags-section"><div><p class="eyebrow">Tag library</p><h2>Available custom tags</h2></div><app-empty-state *ngIf="sortedTags().length === 0" message="No custom tags have been created yet."></app-empty-state><div class="tag-grid" *ngIf="sortedTags().length"><article class="tag-card" *ngFor="let tag of sortedTags()"><span>{{ tag.label }}</span><code>{{ tag.key }}</code><button type="button" [disabled]="saving()" (click)="removeTag(tag)">Remove</button></article></div></section>
+</app-workspace-shell>
+<ng-template #loadingTpl><app-loading-state message="Loading custom tags..."></app-loading-state></ng-template>

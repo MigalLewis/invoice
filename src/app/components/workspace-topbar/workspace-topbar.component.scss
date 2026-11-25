@@ -1,3 +1,12 @@
 :host {
   display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.dashboard-topbar {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  box-sizing: border-box;
 }

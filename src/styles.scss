@@ -200,6 +200,38 @@ select {
   cursor: pointer;
 }
 select:hover { border-color: #c5d4e9; }
+
+/* Shared desktop workspace geometry. Page components provide content only. */
+app-workspace-shell {
+  min-height: 100svh !important;
+  margin-left: 260px !important;
+  padding: 28px 30px 88px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 24px;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+app-workspace-shell.without-nav {
+  margin-left: 0 !important;
+}
+
+@media (max-width: 1024px) {
+  app-workspace-shell {
+    margin-left: 0 !important;
+    padding: 112px 30px 72px !important;
+  }
+}
+
+@media (max-width: 720px) {
+  app-workspace-shell {
+    padding-inline: 16px !important;
+  }
+}
+
 .dashboard-shell {
   min-height: 100svh;
   margin-left: 260px;
@@ -223,6 +255,14 @@ select:hover { border-color: #c5d4e9; }
   justify-content: space-between;
   gap: 20px;
   margin-bottom: 32px;
+}
+
+.dashboard-topbar.without-search {
+  width: 100%;
+  max-width: none;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .search-box {
@@ -326,7 +366,7 @@ h2 { margin: 0; color: var(--primary); font-size: 21px; letter-spacing: -0.03em;
   .bars span { width: 22px; }
 }
 .workspace-shell { min-height: 100svh; margin-left: 260px; padding: 34px 32px 72px; background: var(--bg); }
-.workspace-container { max-width: 1180px; margin: 0 auto; display: grid; gap: 22px; }
+.workspace-container { width: 100%; max-width: none; margin: 0; display: grid; gap: 22px; }
 .breadcrumb { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; font-weight: 700; }
 .breadcrumb a { color: var(--primary); text-decoration: none; }
 .workspace-header { display: flex; justify-content: space-between; align-items: center; gap: 24px; }

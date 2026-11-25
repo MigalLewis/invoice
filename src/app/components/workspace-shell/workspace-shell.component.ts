@@ -18,7 +18,7 @@ import { WorkspaceTopbarComponent } from '../workspace-topbar/workspace-topbar.c
     </app-workspace-topbar>
     <ng-content></ng-content>
   `,
-  styles: [':host { display: block; }']
+  styles: [':host { display: contents; }']
 })
 export class WorkspaceShellComponent {
   @Input() showNav = true;
@@ -28,4 +28,5 @@ export class WorkspaceShellComponent {
   @Input() searchControl?: FormControl<string>;
   @Input() searchPlaceholder = 'Search workspace, clients, invoices...';
   @HostBinding('class') get hostClass(): string { return this.shellClass; }
+  @HostBinding('class.without-nav') get withoutNav(): boolean { return !this.showNav; }
 }

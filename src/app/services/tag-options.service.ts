@@ -85,7 +85,10 @@ export class TagOptionsService {
             : [],
           clients,
           projects,
-          customTags
+          [
+            ...this.companyCustomTags(company),
+            ...customTags
+          ]
         ))
       ))
     );
@@ -112,6 +115,14 @@ export class TagOptionsService {
     return combineLatest(clients.map(client =>
       this.projectService.list(companyId, client.id).pipe(catchError(() => of([] as Project[])))
     )).pipe(map(projectGroups => projectGroups.flat()));
+  }
+
+  private companyCustomTags(company: any | null): FinanceTag[] {
+    if (!Array.isArray(company?.customFinanceTags)) return [];
+    return company.customFinanceTags.flatMap((label: unknown) => {
+      if (typeof label !== 'string') return [];
+      try { return [createFinanceTag('custom', label)]; } catch { return []; }
+    });
   }
 
   private buildGroups(

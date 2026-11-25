@@ -1,4 +1,5 @@
-<app-workspace-shell shellClass="projects-page" *ngIf="!loading(); else loadingTpl">
+<app-workspace-shell shellClass="projects-page" [showSearch]="false" *ngIf="!loading(); else loadingTpl">
+  <app-customisation-tabs />
   <header class="projects-hero">
     <div><p class="eyebrow">Workspace</p><h1>Projects</h1><p>Manage project names and statuses across all clients. Use project tags to group invoices and expenses in Finance.</p></div>
     <div class="project-metrics"><span><strong>{{ projects().length }}</strong>Total</span><span><strong>{{ activeCount() }}</strong>Active</span><span><strong>{{ completedCount() }}</strong>Completed</span></div>

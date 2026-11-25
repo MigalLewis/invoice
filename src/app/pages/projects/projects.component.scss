@@ -1,6 +1,7 @@
 :host { display: block; }
+:host ::ng-deep .dashboard-topbar { max-width: none; }
 :host ::ng-deep .projects-page { min-height: 100svh; margin-left: 260px; padding: 28px 30px 88px; display: grid; gap: 22px; background: var(--bg); }
-.projects-hero, .create-project-card, .projects-list-section { width: 100%; max-width: 1180px; margin-inline: auto; }
+.projects-hero, .create-project-card, .projects-list-section { width: 100%; max-width: none; margin-inline: auto; }
 .projects-hero { display: flex; justify-content: space-between; align-items: end; gap: 24px; }
 .projects-hero h1, h2, h3 { margin: 0; color: var(--ink); }
 .projects-hero > div > p:last-child { max-width: 680px; color: var(--muted); }

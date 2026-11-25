@@ -2,7 +2,7 @@
 .templates-header,
 .template-tabs,
 .template-overview {
-  max-width: 1180px;
+  max-width: none;
   margin-inline: auto;
 }
 .templates-header { margin-bottom: 22px; }
@@ -34,8 +34,9 @@
 .gallery-tab-header h2 { margin: 0; color: var(--primary); }
 .overview-heading p:last-child { margin-bottom: 0; }
 .gallery-tab-header { margin-bottom: 24px; }
-.gallery-section { max-width:1180px; margin-inline:auto; }
-.gallery-message { display:block; max-width:1180px; margin:0 auto 20px; }
+.gallery-section { max-width:none; margin-inline:auto; }
+.gallery-message { display:block; max-width:none; margin:0 0 20px; }
+.template-grid { max-width: none; }
 .muted { color: #64748b; }
 .error { color: #b91c1c; }
 @media (max-width: 1024px) { .template-overview .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -21,6 +21,7 @@ import { NotificationService } from '../../services/notification.service';
 import { RenameTemplateDialogComponent } from '../../components/rename-template-dialog/rename-template-dialog.component';
 import { TemplatePreviewFrameComponent } from '../../components/template-preview-frame/template-preview-frame.component';
 import { TemplateGalleryCardComponent } from '../../components/template-gallery-card/template-gallery-card.component';
+import { CustomisationTabsComponent } from '../../components/customisation-tabs/customisation-tabs.component';
 
 type TemplateType = 'invoice' | 'letter';
 type TemplateTab = 'overview' | 'invoices' | 'letters' | 'emails';
@@ -73,7 +74,7 @@ export function filterTemplates(templates: TemplateCard[], filter: TemplateFilte
 @Component({
   selector: 'app-templates',
   standalone: true,
-  imports: [CommonModule, RouterLink, NavBarComponent, WorkspaceTopbarComponent, WorkspaceShellComponent, EmptyStateComponent, TemplatePreviewFrameComponent, TemplateGalleryCardComponent],
+  imports: [CommonModule, RouterLink, NavBarComponent, WorkspaceTopbarComponent, WorkspaceShellComponent, EmptyStateComponent, TemplatePreviewFrameComponent, TemplateGalleryCardComponent, CustomisationTabsComponent],
   templateUrl: './templates.component.html',
   styleUrl: './templates.component.scss'
 })

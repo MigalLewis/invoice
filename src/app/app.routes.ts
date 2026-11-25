@@ -13,6 +13,7 @@ import { TemplatesComponent } from './pages/templates/templates.component';
 import { FinanceComponent } from './pages/finance/finance.component';
 import { SettingsPageComponent } from './pages/settings/settings-page.component';
 import { ProjectsComponent } from './pages/projects/projects.component';
+import { CustomTagsComponent } from './pages/custom-tags/custom-tags.component';
 
 const companyRoutes = [authGuard, companyGuard];
 
@@ -25,6 +26,7 @@ export const routes: Routes = [
   { path: 'clients/new', component: CreateClientComponent, canActivate: companyRoutes },
   { path: 'clients', component: ClientListComponent, canActivate: companyRoutes },
   { path: 'projects', component: ProjectsComponent, canActivate: companyRoutes },
+  { path: 'custom-tags', component: CustomTagsComponent, canActivate: companyRoutes },
   { path: 'templates', component: TemplatesComponent, canActivate: companyRoutes },
   { path: 'email-templates/designer/:templateId', redirectTo: 'templates' },
   { path: 'email-templates/designer', redirectTo: 'templates' },

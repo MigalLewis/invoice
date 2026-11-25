@@ -7,6 +7,7 @@ import { EmptyStateComponent } from '../../components/empty-state/empty-state.co
 import { LoadingStateComponent } from '../../components/loading-state/loading-state.component';
 import { StatusBadgeComponent } from '../../components/status-badge/status-badge.component';
 import { WorkspaceShellComponent } from '../../components/workspace-shell/workspace-shell.component';
+import { CustomisationTabsComponent } from '../../components/customisation-tabs/customisation-tabs.component';
 import { Client } from '../../models/client.model';
 import { Project, ProjectStatus } from '../../models/project.model';
 import { ClientService } from '../../services/client.service';
@@ -17,7 +18,7 @@ import { ProjectService } from '../../services/project.service';
 @Component({
   selector: 'app-projects',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink, WorkspaceShellComponent, StatusBadgeComponent, EmptyStateComponent, LoadingStateComponent],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink, WorkspaceShellComponent, StatusBadgeComponent, EmptyStateComponent, LoadingStateComponent, CustomisationTabsComponent],
   templateUrl: './projects.component.html',
   styleUrl: './projects.component.scss'
 })
